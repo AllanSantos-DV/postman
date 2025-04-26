@@ -6,7 +6,8 @@ import os
 from PyQt5.QtWidgets import (
     QMainWindow, QTabWidget, QSplitter, QTreeView, QVBoxLayout, 
     QHBoxLayout, QWidget, QAction, QToolBar, QStatusBar, QMessageBox,
-    QMenu, QInputDialog, QLineEdit
+    QMenu, QInputDialog, QLineEdit, QDialog, QDialogButtonBox, QComboBox,
+    QLabel
 )
 from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtGui import QIcon
@@ -16,6 +17,38 @@ from src.ui.request_tab import RequestTab
 from src.ui.collection_tree_model import CollectionTreeModel
 from src.models.collection import Collection, Folder
 from src.models.request import Request
+
+
+class SelectCollectionDialog(QDialog):
+    """
+    Diálogo para selecionar uma coleção
+    """
+    def __init__(self, collections, parent=None):
+        super().__init__(parent)
+        
+        self.setWindowTitle("Salvar na Coleção")
+        self.setMinimumWidth(400)
+        
+        layout = QVBoxLayout(self)
+        
+        # Combobox para selecionar a coleção
+        self.collection_combo = QComboBox()
+        for collection in collections:
+            self.collection_combo.addItem(collection.name, collection.id)
+        
+        layout.addWidget(QLabel("Selecione a coleção:"))
+        layout.addWidget(self.collection_combo)
+        
+        # Botões
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        
+        layout.addWidget(button_box)
+    
+    def get_selected_collection_id(self):
+        """Retorna o ID da coleção selecionada"""
+        return self.collection_combo.currentData()
 
 
 class MainWindow(QMainWindow):
@@ -116,6 +149,11 @@ class MainWindow(QMainWindow):
         self.exit_action = QAction("Sair", self)
         self.exit_action.setStatusTip("Sair do aplicativo")
         self.exit_action.triggered.connect(self.close)
+        
+        # Ação para salvar requisição na coleção
+        self.save_to_collection_action = QAction("Salvar na Coleção", self)
+        self.save_to_collection_action.setStatusTip("Salvar requisição em uma coleção")
+        self.save_to_collection_action.triggered.connect(self._save_current_request_to_collection)
     
     def _create_toolbar(self):
         """Cria a barra de ferramentas"""
@@ -128,6 +166,8 @@ class MainWindow(QMainWindow):
         self.toolbar.addAction(self.new_request_action)
         self.toolbar.addAction(self.new_collection_action)
         self.toolbar.addSeparator()
+        self.toolbar.addAction(self.save_to_collection_action)
+        self.toolbar.addSeparator()
         self.toolbar.addAction(self.import_action)
         self.toolbar.addAction(self.export_action)
     
@@ -139,6 +179,8 @@ class MainWindow(QMainWindow):
         file_menu = menu_bar.addMenu("Arquivo")
         file_menu.addAction(self.new_request_action)
         file_menu.addAction(self.new_collection_action)
+        file_menu.addSeparator()
+        file_menu.addAction(self.save_to_collection_action)
         file_menu.addSeparator()
         file_menu.addAction(self.import_action)
         file_menu.addAction(self.export_action)
@@ -181,6 +223,7 @@ class MainWindow(QMainWindow):
         
         # Conectar sinais
         request_tab.request_saved.connect(self._on_request_saved)
+        request_tab.save_to_collection.connect(self._save_current_request_to_collection)
         
         # Adicionar à guia e selecionar
         index = self.request_tabs.addTab(request_tab, request.name)
@@ -312,37 +355,450 @@ class MainWindow(QMainWindow):
         
         # Atualizar o modelo de coleções
         self.collection_model.load_collections()
+    
+    def _save_current_request_to_collection(self):
+        """Salva a requisição atual em uma coleção"""
+        # Obter a guia atual
+        current_index = self.request_tabs.currentIndex()
+        if current_index < 0:
+            return
         
-    # Outros métodos serão implementados posteriormente
-    def _add_request_to_collection(self, collection):
-        pass
+        tab = self.request_tabs.widget(current_index)
+        if not hasattr(tab, 'request'):
+            return
         
-    def _add_folder_to_collection(self, collection):
-        pass
+        # Salvar a requisição atual
+        tab.save_request()
         
-    def _rename_collection(self, collection):
-        pass
+        # Obter todas as coleções
+        collections = self.storage.get_all_collections()
+        if not collections:
+            QMessageBox.warning(
+                self,
+                "Sem Coleções",
+                "Não há coleções disponíveis. Crie uma coleção primeiro."
+            )
+            return
         
-    def _delete_collection(self, collection):
-        pass
+        # Mostrar diálogo para selecionar a coleção
+        dialog = SelectCollectionDialog(collections, self)
+        if dialog.exec_() != QDialog.Accepted:
+            return
         
-    def _add_request_to_folder(self, folder):
-        pass
+        # Obter a coleção selecionada
+        collection_id = dialog.get_selected_collection_id()
+        collection = self.storage.get_collection(collection_id)
         
-    def _add_subfolder(self, folder):
-        pass
+        if not collection:
+            return
         
-    def _rename_folder(self, folder):
-        pass
+        # Adicionar a requisição à coleção
+        collection.add_request(tab.request.id)
         
-    def _delete_folder(self, folder):
-        pass
+        # Salvar a coleção
+        self.storage.save_collection(collection)
         
+        # Atualizar o modelo
+        self.collection_model.load_collections()
+        
+        # Exibir mensagem de sucesso
+        self.status_bar.showMessage(f"Requisição '{tab.request.name}' adicionada à coleção '{collection.name}'", 3000)
+        
+    def _add_request_to_collection(self, collection_id):
+        """Adiciona uma nova requisição a uma coleção"""
+        # Carregar a coleção
+        collection = self.storage.get_collection(collection_id)
+        if not collection:
+            return
+        
+        # Criar uma nova requisição
+        request = Request(
+            name="Nova Requisição",
+            url="https://",
+            method="GET"
+        )
+        
+        # Salvar a requisição
+        self.storage.save_request(request)
+        
+        # Adicionar à coleção
+        collection.add_request(request.id)
+        self.storage.save_collection(collection)
+        
+        # Atualizar o modelo
+        self.collection_model.load_collections()
+        
+        # Abrir a requisição em uma nova guia
+        self._add_request_tab(request)
+    
+    def _add_folder_to_collection(self, collection_id):
+        """Adiciona uma nova pasta a uma coleção"""
+        # Carregar a coleção
+        collection = self.storage.get_collection(collection_id)
+        if not collection:
+            return
+        
+        # Solicitar o nome da pasta
+        name, ok = QInputDialog.getText(
+            self,
+            "Nova Pasta",
+            "Nome da pasta:",
+            QLineEdit.Normal
+        )
+        
+        if not (ok and name):
+            return
+        
+        # Criar uma nova pasta
+        folder = Folder(name=name)
+        
+        # Adicionar à coleção
+        collection.add_folder(folder)
+        self.storage.save_collection(collection)
+        
+        # Atualizar o modelo
+        self.collection_model.load_collections()
+    
+    def _rename_collection(self, collection_id):
+        """Renomeia uma coleção"""
+        # Carregar a coleção
+        collection = self.storage.get_collection(collection_id)
+        if not collection:
+            return
+        
+        # Solicitar o novo nome
+        name, ok = QInputDialog.getText(
+            self,
+            "Renomear Coleção",
+            "Novo nome:",
+            QLineEdit.Normal,
+            collection.name
+        )
+        
+        if not (ok and name):
+            return
+        
+        # Atualizar o nome
+        collection.name = name
+        self.storage.save_collection(collection)
+        
+        # Atualizar o modelo
+        self.collection_model.load_collections()
+    
+    def _delete_collection(self, collection_id):
+        """Exclui uma coleção"""
+        # Carregar a coleção
+        collection = self.storage.get_collection(collection_id)
+        if not collection:
+            return
+        
+        # Confirmar a exclusão
+        reply = QMessageBox.question(
+            self,
+            "Excluir Coleção",
+            f"Deseja realmente excluir a coleção '{collection.name}'?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        
+        if reply != QMessageBox.Yes:
+            return
+        
+        # Excluir a coleção
+        self.storage.delete_collection(collection_id)
+        
+        # Atualizar o modelo
+        self.collection_model.load_collections()
+    
+    def _add_request_to_folder(self, folder_id):
+        """Adiciona uma requisição a uma pasta"""
+        # Encontrar a pasta
+        for collection in self.storage.get_all_collections():
+            folder = self._find_folder_in_collection(collection, folder_id)
+            if folder:
+                # Criar uma nova requisição
+                request = Request(
+                    name="Nova Requisição",
+                    url="https://",
+                    method="GET"
+                )
+                
+                # Salvar a requisição
+                self.storage.save_request(request)
+                
+                # Adicionar à pasta
+                folder.add_request(request.id)
+                self.storage.save_collection(collection)
+                
+                # Atualizar o modelo
+                self.collection_model.load_collections()
+                
+                # Abrir a requisição em uma nova guia
+                self._add_request_tab(request)
+                return
+    
+    def _find_folder_in_collection(self, collection, folder_id):
+        """Encontra uma pasta em uma coleção (busca recursiva)"""
+        # Verificar as pastas diretamente na coleção
+        for folder in collection.folders:
+            if folder.id == folder_id:
+                return folder
+            
+            # Verificar subpastas
+            subfolder = self._find_folder_in_subfolders(folder, folder_id)
+            if subfolder:
+                return subfolder
+        
+        return None
+    
+    def _find_folder_in_subfolders(self, parent_folder, folder_id):
+        """Busca recursivamente uma pasta dentro de subpastas"""
+        for subfolder in parent_folder.subfolders:
+            if subfolder.id == folder_id:
+                return subfolder
+            
+            # Verificar níveis mais profundos
+            result = self._find_folder_in_subfolders(subfolder, folder_id)
+            if result:
+                return result
+        
+        return None
+    
+    def _add_subfolder(self, parent_folder_id):
+        """Adiciona uma subpasta a uma pasta"""
+        # Encontrar a pasta pai
+        for collection in self.storage.get_all_collections():
+            parent_folder = self._find_folder_in_collection(collection, parent_folder_id)
+            if parent_folder:
+                # Solicitar o nome da pasta
+                name, ok = QInputDialog.getText(
+                    self,
+                    "Nova Subpasta",
+                    "Nome da subpasta:",
+                    QLineEdit.Normal
+                )
+                
+                if not (ok and name):
+                    return
+                
+                # Criar uma nova pasta
+                subfolder = Folder(name=name)
+                
+                # Adicionar à pasta pai
+                parent_folder.add_subfolder(subfolder)
+                self.storage.save_collection(collection)
+                
+                # Atualizar o modelo
+                self.collection_model.load_collections()
+                return
+    
+    def _rename_folder(self, folder_id):
+        """Renomeia uma pasta"""
+        # Encontrar a pasta
+        for collection in self.storage.get_all_collections():
+            folder = self._find_folder_in_collection(collection, folder_id)
+            if folder:
+                # Solicitar o novo nome
+                name, ok = QInputDialog.getText(
+                    self,
+                    "Renomear Pasta",
+                    "Novo nome:",
+                    QLineEdit.Normal,
+                    folder.name
+                )
+                
+                if not (ok and name):
+                    return
+                
+                # Atualizar o nome
+                folder.name = name
+                self.storage.save_collection(collection)
+                
+                # Atualizar o modelo
+                self.collection_model.load_collections()
+                return
+    
+    def _delete_folder(self, folder_id):
+        """Exclui uma pasta"""
+        # Encontrar a pasta e sua coleção
+        for collection in self.storage.get_all_collections():
+            # Verificar se a pasta está diretamente na coleção
+            for folder in collection.folders:
+                if folder.id == folder_id:
+                    # Confirmar a exclusão
+                    reply = QMessageBox.question(
+                        self,
+                        "Excluir Pasta",
+                        f"Deseja realmente excluir a pasta '{folder.name}'?",
+                        QMessageBox.Yes | QMessageBox.No
+                    )
+                    
+                    if reply != QMessageBox.Yes:
+                        return
+                    
+                    # Excluir a pasta
+                    collection.remove_folder(folder_id)
+                    self.storage.save_collection(collection)
+                    
+                    # Atualizar o modelo
+                    self.collection_model.load_collections()
+                    return
+            
+            # Verificar pastas aninhadas
+            if self._delete_folder_from_subfolders(collection, folder_id):
+                return
+    
+    def _delete_folder_from_subfolders(self, collection, folder_id):
+        """Remove uma pasta de subpastas recursivamente"""
+        for folder in collection.folders:
+            if self._delete_subfolder(folder, folder_id):
+                self.storage.save_collection(collection)
+                self.collection_model.load_collections()
+                return True
+        
+        return False
+    
+    def _delete_subfolder(self, parent_folder, folder_id):
+        """Busca e remove uma subpasta recursivamente"""
+        # Verificar se a pasta está nas subpastas diretas
+        for subfolder in parent_folder.subfolders:
+            if subfolder.id == folder_id:
+                # Confirmar a exclusão
+                reply = QMessageBox.question(
+                    self,
+                    "Excluir Pasta",
+                    f"Deseja realmente excluir a pasta '{subfolder.name}'?",
+                    QMessageBox.Yes | QMessageBox.No
+                )
+                
+                if reply != QMessageBox.Yes:
+                    return False
+                
+                # Excluir a pasta
+                parent_folder.remove_subfolder(folder_id)
+                return True
+            
+            # Verificar níveis mais profundos
+            if self._delete_subfolder(subfolder, folder_id):
+                return True
+        
+        return False
+    
     def _duplicate_request(self, request_id):
-        pass
+        """Duplica uma requisição"""
+        # Carregar a requisição original
+        original_request = self.storage.get_request(request_id)
+        if not original_request:
+            return
         
+        # Criar uma nova requisição com dados copiados
+        request_data = original_request.to_dict()
+        
+        # Modificar para uma nova requisição
+        del request_data["id"]
+        request_data["name"] = f"{original_request.name} (Cópia)"
+        
+        # Criar a nova requisição
+        new_request = Request.from_dict(request_data)
+        
+        # Salvar a nova requisição
+        self.storage.save_request(new_request)
+        
+        # Abrir a nova requisição
+        self._add_request_tab(new_request)
+    
     def _rename_request(self, request_id):
-        pass
+        """Renomeia uma requisição"""
+        # Carregar a requisição
+        request = self.storage.get_request(request_id)
+        if not request:
+            return
         
+        # Solicitar o novo nome
+        name, ok = QInputDialog.getText(
+            self,
+            "Renomear Requisição",
+            "Novo nome:",
+            QLineEdit.Normal,
+            request.name
+        )
+        
+        if not (ok and name):
+            return
+        
+        # Atualizar o nome
+        request.name = name
+        self.storage.save_request(request)
+        
+        # Atualizar o modelo
+        self.collection_model.load_collections()
+        
+        # Atualizar as guias abertas com esta requisição
+        for i in range(self.request_tabs.count()):
+            tab = self.request_tabs.widget(i)
+            if hasattr(tab, 'request') and tab.request.id == request.id:
+                tab.request.name = name
+                self.request_tabs.setTabText(i, name)
+                break
+    
     def _delete_request(self, request_id):
-        pass 
+        """Exclui uma requisição"""
+        # Carregar a requisição
+        request = self.storage.get_request(request_id)
+        if not request:
+            return
+        
+        # Confirmar a exclusão
+        reply = QMessageBox.question(
+            self,
+            "Excluir Requisição",
+            f"Deseja realmente excluir a requisição '{request.name}'?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        
+        if reply != QMessageBox.Yes:
+            return
+        
+        # Fechar guias abertas com esta requisição
+        for i in range(self.request_tabs.count()-1, -1, -1):
+            tab = self.request_tabs.widget(i)
+            if hasattr(tab, 'request') and tab.request.id == request.id:
+                self.request_tabs.removeTab(i)
+        
+        # Remover de todas as coleções
+        for collection in self.storage.get_all_collections():
+            # Remover da coleção principal
+            if request_id in collection.requests:
+                collection.remove_request(request_id)
+                self.storage.save_collection(collection)
+            
+            # Remover de pastas
+            self._remove_request_from_folders(collection, request_id)
+        
+        # Excluir a requisição
+        self.storage.delete_request(request_id)
+        
+        # Atualizar o modelo
+        self.collection_model.load_collections()
+    
+    def _remove_request_from_folders(self, collection, request_id):
+        """Remove uma requisição de todas as pastas em uma coleção"""
+        # Verificar todas as pastas na coleção
+        for folder in collection.folders:
+            # Remover da pasta atual
+            if request_id in folder.requests:
+                folder.remove_request(request_id)
+                self.storage.save_collection(collection)
+            
+            # Verificar subpastas recursivamente
+            self._remove_request_from_subfolders(folder, request_id, collection)
+    
+    def _remove_request_from_subfolders(self, folder, request_id, collection):
+        """Remove uma requisição de subpastas recursivamente"""
+        for subfolder in folder.subfolders:
+            # Remover da subpasta atual
+            if request_id in subfolder.requests:
+                subfolder.remove_request(request_id)
+                self.storage.save_collection(collection)
+            
+            # Verificar níveis mais profundos
+            self._remove_request_from_subfolders(subfolder, request_id, collection) 

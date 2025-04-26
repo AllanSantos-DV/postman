@@ -112,6 +112,8 @@ class RequestTab(QWidget):
     """
     # Sinal emitido quando uma requisição é salva
     request_saved = pyqtSignal(Request)
+    # Sinal para solicitar salvar na coleção
+    save_to_collection = pyqtSignal()
     
     def __init__(self, request: Request, storage: Storage):
         super().__init__()
@@ -146,6 +148,11 @@ class RequestTab(QWidget):
         self.save_button = QPushButton("Salvar")
         self.save_button.clicked.connect(self.save_request)
         toolbar.addWidget(self.save_button)
+        
+        # Botão para salvar na coleção
+        self.save_to_collection_button = QPushButton("Salvar na Coleção")
+        self.save_to_collection_button.clicked.connect(self._on_save_to_collection)
+        toolbar.addWidget(self.save_to_collection_button)
         
         main_layout.addWidget(toolbar)
         
@@ -245,6 +252,7 @@ class RequestTab(QWidget):
         self.content_type_combo = QComboBox()
         self.content_type_combo.addItems(["application/json", "text/plain", "application/xml", "text/html"])
         self.content_type_combo.setVisible(False)
+        self.content_type_combo.currentTextChanged.connect(self._on_content_type_changed)
         
         body_type_layout.addWidget(QLabel("Content-Type:"))
         body_type_layout.addWidget(self.content_type_combo)
@@ -252,6 +260,21 @@ class RequestTab(QWidget):
         body_layout.addLayout(body_type_layout)
         
         # Editor de corpo
+        editor_layout = QVBoxLayout()
+        
+        # Barra de ferramentas do editor
+        editor_toolbar = QHBoxLayout()
+        
+        # Botão para formatar JSON
+        self.format_json_button = QPushButton("Formatar JSON")
+        self.format_json_button.clicked.connect(self._format_json)
+        self.format_json_button.setVisible(False)
+        editor_toolbar.addWidget(self.format_json_button)
+        
+        editor_toolbar.addStretch()
+        editor_layout.addLayout(editor_toolbar)
+        
+        # Editor de texto
         self.body_editor = QPlainTextEdit()
         self.body_editor.setPlaceholderText("Corpo da requisição")
         self.body_editor.textChanged.connect(self._on_field_changed)
@@ -259,7 +282,8 @@ class RequestTab(QWidget):
         # Realce de sintaxe para JSON
         self.json_highlighter = JsonHighlighter(self.body_editor.document())
         
-        body_layout.addWidget(self.body_editor)
+        editor_layout.addWidget(self.body_editor)
+        body_layout.addLayout(editor_layout)
         
         # Tabela para form-data/url-encoded
         self.body_table = QTableWidget(0, 3)
@@ -349,11 +373,22 @@ class RequestTab(QWidget):
                 self.body_type_combo.setCurrentText("raw")
                 self.content_type_combo.setCurrentText("application/json")
                 self.body_editor.setPlainText(json.dumps(self.request.body, indent=2))
+                self.format_json_button.setVisible(True)
             elif isinstance(self.request.body, str):
                 # Se for uma string, exibir como texto
                 self.body_type_combo.setCurrentText("raw")
                 self.content_type_combo.setCurrentText("text/plain")
                 self.body_editor.setPlainText(self.request.body)
+                
+                # Verificar se parece ser JSON
+                try:
+                    json.loads(self.request.body)
+                    # Se passou no parse, é JSON
+                    self.content_type_combo.setCurrentText("application/json")
+                    self.format_json_button.setVisible(True)
+                except (ValueError, TypeError):
+                    # Não é JSON, manter como texto plano
+                    pass
         
         # Limpar o flag de alterações não salvas
         self._has_unsaved_changes = False
@@ -388,6 +423,7 @@ class RequestTab(QWidget):
         self.body_table.setVisible(False)
         self.add_form_button.setVisible(False)
         self.content_type_combo.setVisible(False)
+        self.format_json_button.setVisible(False)
         
         if body_type == "none":
             # Nenhum corpo
@@ -397,6 +433,10 @@ class RequestTab(QWidget):
             # Corpo como texto
             self.body_editor.setVisible(True)
             self.content_type_combo.setVisible(True)
+            
+            # Verificar se o tipo de conteúdo é JSON para mostrar o botão de formatação
+            if self.content_type_combo.currentText() == "application/json":
+                self.format_json_button.setVisible(True)
         
         elif body_type == "form-data" or body_type == "x-www-form-urlencoded":
             # Corpo como formulário
@@ -502,6 +542,14 @@ class RequestTab(QWidget):
         # Emitir sinal
         self.request_saved.emit(self.request)
     
+    def _on_save_to_collection(self):
+        """Emite sinal para salvar na coleção"""
+        # Primeiro salvamos a requisição
+        self.save_request()
+        
+        # Emitir sinal para a janela principal
+        self.save_to_collection.emit()
+    
     def _send_request(self):
         """Envia a requisição"""
         # Atualizar os dados da requisição
@@ -550,4 +598,74 @@ class RequestTab(QWidget):
             row = self.response_headers.rowCount()
             self.response_headers.insertRow(row)
             self.response_headers.setItem(row, 0, QTableWidgetItem(key))
-            self.response_headers.setItem(row, 1, QTableWidgetItem(value)) 
+            self.response_headers.setItem(row, 1, QTableWidgetItem(value))
+    
+    def _on_content_type_changed(self, content_type):
+        """Atualiza a interface quando o tipo de conteúdo muda"""
+        # Mostrar ou esconder o botão de formatação JSON
+        is_json = content_type == "application/json"
+        self.format_json_button.setVisible(is_json)
+        
+        if is_json:
+            # Verificar o texto do JSON para determinar o texto do botão
+            text = self.body_editor.toPlainText().strip()
+            if text:
+                try:
+                    # Verificar se já está formatado (tem quebras de linha)
+                    is_formatted = '\n' in text
+                    
+                    if is_formatted:
+                        self.format_json_button.setText("Minificar JSON")
+                    else:
+                        self.format_json_button.setText("Formatar JSON")
+                except Exception:
+                    # Em caso de erro, usar o texto padrão
+                    self.format_json_button.setText("Formatar JSON")
+            else:
+                # Se não há texto, usar o texto padrão
+                self.format_json_button.setText("Formatar JSON")
+    
+    def _format_json(self):
+        """Formata o JSON no editor de corpo"""
+        text = self.body_editor.toPlainText().strip()
+        if not text:
+            return
+        
+        try:
+            # Carregar o JSON
+            parsed_json = json.loads(text)
+            
+            # Verificar se já está formatado (tem quebras de linha)
+            is_formatted = '\n' in text
+            
+            if is_formatted:
+                # Se já está formatado, minificar
+                formatted_json = json.dumps(parsed_json, separators=(',', ':'))
+                message = "JSON minificado com sucesso!"
+            else:
+                # Se está minificado, formatar
+                formatted_json = json.dumps(parsed_json, indent=2)
+                message = "JSON formatado com sucesso!"
+            
+            # Atualizar o editor
+            self.body_editor.setPlainText(formatted_json)
+            
+            # Atualizar o texto do botão
+            if is_formatted:
+                self.format_json_button.setText("Formatar JSON")
+            else:
+                self.format_json_button.setText("Minificar JSON")
+            
+            # Mostrar mensagem discreta na barra de status se disponível
+            parent = self.window()
+            if hasattr(parent, 'statusBar'):
+                parent.statusBar().showMessage(message, 3000)
+            
+        except json.JSONDecodeError as e:
+            # Informar ao usuário sobre o erro
+            QMessageBox.warning(
+                self,
+                "Erro de formatação",
+                f"Não foi possível processar o JSON. Erro: {str(e)}",
+                QMessageBox.Ok
+            ) 
