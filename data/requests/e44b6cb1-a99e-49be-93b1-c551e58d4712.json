@@ -1,0 +1,20 @@
+{
+  "id": "e44b6cb1-a99e-49be-93b1-c551e58d4712",
+  "name": "Conselhos",
+  "url": "https://fakestoreapi.com/products/6",
+  "method": "DELETE",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "params": {},
+  "body": {
+    "title": "test product",
+    "price": "13.5",
+    "description": "lorem ipsum set",
+    "image": "https://i.pravatar.cc",
+    "category": "electronic"
+  },
+  "description": "",
+  "created_at": "2025-04-25T22:05:58.528116",
+  "updated_at": "2025-04-25T22:05:58.528116"
+}

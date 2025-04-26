@@ -1,0 +1,4 @@
+requests==2.31.0
+PyQt5==5.15.9
+jsonschema==4.19.0
+pyperclip==1.8.2 

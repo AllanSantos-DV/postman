@@ -1,0 +1,23 @@
+{
+  "theme": "light",
+  "window": {
+    "width": 1200,
+    "height": 800,
+    "maximize": false
+  },
+  "proxy": {
+    "enabled": false,
+    "host": "",
+    "port": 0,
+    "username": "",
+    "password": ""
+  },
+  "default_timeouts": {
+    "connect": 5000,
+    "read": 30000
+  },
+  "history": {
+    "max_items": 50,
+    "auto_save": true
+  }
+} 
