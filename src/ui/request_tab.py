@@ -44,6 +44,45 @@ COMMON_HEADERS = [
 ]
 
 
+class VariableAwareTableDelegate(QStyledItemDelegate):
+    """
+    Delegate personalizado para fornecer auto-completar para variáveis e cabeçalhos HTTP
+    """
+    def __init__(self, parent=None, headers=None, variable_completer=None, is_header_column=False):
+        super().__init__(parent)
+        self.headers = headers or []
+        self.variable_completer = variable_completer
+        self.is_header_column = is_header_column
+        self.current_editor = None
+        
+    def createEditor(self, parent, option, index):
+        """Cria um editor com auto-completar para os cabeçalhos e variáveis"""
+        editor = QLineEdit(parent)
+        
+        # Configurar o completer para cabeçalhos se for coluna de cabeçalho
+        if self.is_header_column and self.headers:
+            header_completer = QCompleter(self.headers, editor)
+            header_completer.setCaseSensitivity(Qt.CaseInsensitive)
+            header_completer.setFilterMode(Qt.MatchContains)
+            editor.setCompleter(header_completer)
+        
+        # Conectar o editor ao autocompletar de variáveis
+        if self.variable_completer:
+            self.variable_completer.connect_to_lineedit(editor)
+            self.current_editor = editor
+        
+        return editor
+    
+    def add_header(self, header):
+        """Adiciona um cabeçalho à lista de auto-completar"""
+        if header and header not in self.headers:
+            self.headers.append(header)
+    
+    def set_variable_completer(self, completer):
+        """Define o completer de variáveis"""
+        self.variable_completer = completer
+
+
 class HeaderCompleterDelegate(QStyledItemDelegate):
     """
     Delegate personalizado para fornecer auto-completar para os cabeçalhos HTTP
@@ -310,6 +349,10 @@ class RequestTab(QWidget):
         self.params_table.horizontalHeader().setDefaultSectionSize(30)
         self.params_table.itemChanged.connect(self._on_table_changed)
         
+        # Delegate para autocompletar variáveis em parâmetros
+        self.params_value_delegate = VariableAwareTableDelegate(self.params_table, variable_completer=self.variable_completer)
+        self.params_table.setItemDelegateForColumn(1, self.params_value_delegate)
+        
         params_layout.addWidget(self.params_table)
         
         # Botão para adicionar parâmetro
@@ -324,8 +367,29 @@ class RequestTab(QWidget):
         headers_layout = QVBoxLayout(headers_widget)
         
         # Iniciar a tabela de cabeçalhos com cabeçalhos conhecidos e personalizados
-        self.headers_table = HeaderTableWidget(self, RequestTab.custom_headers)
+        self.headers_table = QTableWidget(0, 3)
+        self.headers_table.setHorizontalHeaderLabels(["Cabeçalho", "Valor", ""])
+        self.headers_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.headers_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.headers_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
+        self.headers_table.horizontalHeader().setDefaultSectionSize(30)
         self.headers_table.itemChanged.connect(self._on_table_changed)
+        
+        # Delegate para autocompletar cabeçalhos
+        self.headers_name_delegate = VariableAwareTableDelegate(
+            self.headers_table, 
+            headers=COMMON_HEADERS.copy() + list(RequestTab.custom_headers), 
+            variable_completer=self.variable_completer,
+            is_header_column=True
+        )
+        self.headers_table.setItemDelegateForColumn(0, self.headers_name_delegate)
+        
+        # Delegate para autocompletar variáveis em valores de cabeçalhos
+        self.headers_value_delegate = VariableAwareTableDelegate(
+            self.headers_table, 
+            variable_completer=self.variable_completer
+        )
+        self.headers_table.setItemDelegateForColumn(1, self.headers_value_delegate)
         
         headers_layout.addWidget(self.headers_table)
         
@@ -508,9 +572,12 @@ class RequestTab(QWidget):
         table.setItem(row, 1, value_item)
         
         # Coluna para o botão de exclusão
-        delete_button = QPushButton("X")
+        delete_button = QPushButton("×")
+        delete_button.setFixedSize(24, 24)
         delete_button.clicked.connect(lambda: self._remove_table_row(table, row))
         table.setCellWidget(row, 2, delete_button)
+        
+        return row
     
     def _remove_table_row(self, table, row):
         """Remove uma linha da tabela"""
@@ -885,41 +952,8 @@ class RequestTab(QWidget):
         self.variable_completer.connect_to_lineedit(self.name_edit)
         self.variable_completer.connect_to_textedit(self.body_editor)
         
-        # Conectar eventos de alteração de célula da tabela para detectar variáveis
-        self.params_table.cellChanged.connect(self._check_variable_in_table_cell)
-        self.headers_table.cellChanged.connect(self._check_variable_in_table_cell)
-    
-    def _check_variable_in_table_cell(self, row, column):
-        """
-        Verifica se há referências a variáveis em uma célula de tabela
-        e adiciona as novas variáveis à lista de variáveis conhecidas.
+        # Os delegates já estão configurados para usar o variable_completer
         
-        Args:
-            row (int): Linha da célula
-            column (int): Coluna da célula
-        """
-        # Apenas verificar a coluna de valores (1)
-        if column != 1:
-            return
-        
-        # Obter a tabela que emitiu o sinal
-        table = self.sender()
-        if not table:
-            return
-        
-        # Obter o item da célula
-        item = table.item(row, column)
-        if not item:
-            return
-        
-        # Verificar se há variáveis no texto
-        text = item.text()
-        if not text:
-            return
-        
-        # Extrair variáveis do texto
-        variables = self.variable_completer.find_variables_in_text(text)
-    
     def set_available_variables(self, variables):
         """
         Define as variáveis disponíveis para autocompletar.
