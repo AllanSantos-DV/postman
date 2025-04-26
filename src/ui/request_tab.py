@@ -9,14 +9,109 @@ from PyQt5.QtWidgets import (
     QPushButton, QLabel, QSplitter, QToolBar,
     QAction, QGroupBox, QTableWidget, QTableWidgetItem,
     QHeaderView, QMessageBox, QPlainTextEdit, QMenu,
-    QApplication
+    QApplication, QStyledItemDelegate, QCompleter
 )
-from PyQt5.QtCore import Qt, pyqtSignal, QSize
+from PyQt5.QtCore import Qt, pyqtSignal, QSize, QStringListModel
 from PyQt5.QtGui import QColor, QSyntaxHighlighter, QTextCharFormat, QFont
 
 from src.models.request import Request, Response
 from src.core.http_client import HttpClient
 from src.core.storage import Storage
+
+
+# Lista de cabeçalhos HTTP comuns
+COMMON_HEADERS = [
+    "Accept", "Accept-Charset", "Accept-Encoding", "Accept-Language", "Accept-Ranges",
+    "Access-Control-Allow-Credentials", "Access-Control-Allow-Headers", "Access-Control-Allow-Methods",
+    "Access-Control-Allow-Origin", "Access-Control-Expose-Headers", "Access-Control-Max-Age",
+    "Access-Control-Request-Headers", "Access-Control-Request-Method",
+    "Age", "Allow", "Alt-Svc", "Authorization", "Cache-Control", "Clear-Site-Data",
+    "Connection", "Content-Disposition", "Content-Encoding", "Content-Language",
+    "Content-Length", "Content-Location", "Content-Range", "Content-Security-Policy",
+    "Content-Security-Policy-Report-Only", "Content-Type", "Cookie", "DNT", "Date", "ETag",
+    "Expect", "Expires", "Forwarded", "From", "Host", "If-Match", "If-Modified-Since",
+    "If-None-Match", "If-Range", "If-Unmodified-Since", "Keep-Alive", "Last-Modified",
+    "Link", "Location", "Origin", "Pragma", "Proxy-Authenticate", "Proxy-Authorization",
+    "Range", "Referer", "Referrer-Policy", "Retry-After", "Sec-Fetch-Dest", "Sec-Fetch-Mode",
+    "Sec-Fetch-Site", "Sec-Fetch-User", "Server", "Server-Timing", "Set-Cookie",
+    "SourceMap", "Strict-Transport-Security", "TE", "Timing-Allow-Origin", "Trailer",
+    "Transfer-Encoding", "Upgrade", "Upgrade-Insecure-Requests", "User-Agent",
+    "Vary", "Via", "WWW-Authenticate", "Warning", "X-Content-Type-Options",
+    "X-DNS-Prefetch-Control", "X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto",
+    "X-Frame-Options", "X-XSS-Protection",
+    "X-Api-Key", "X-Requested-With", "X-CSRFToken"
+]
+
+
+class HeaderCompleterDelegate(QStyledItemDelegate):
+    """
+    Delegate personalizado para fornecer auto-completar para os cabeçalhos HTTP
+    """
+    def __init__(self, parent=None, headers=None):
+        super().__init__(parent)
+        self.headers = headers or COMMON_HEADERS.copy()
+        
+    def createEditor(self, parent, option, index):
+        """Cria um editor com auto-completar para os cabeçalhos"""
+        editor = QLineEdit(parent)
+        
+        # Configurar o completer para o editor
+        completer = QCompleter(self.headers, editor)
+        completer.setCaseSensitivity(Qt.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchContains)
+        editor.setCompleter(completer)
+        
+        return editor
+    
+    def add_header(self, header):
+        """Adiciona um cabeçalho à lista de auto-completar"""
+        if header and header not in self.headers:
+            self.headers.append(header)
+
+
+class HeaderTableWidget(QTableWidget):
+    """
+    Widget de tabela personalizado com auto-completar para cabeçalhos HTTP
+    """
+    def __init__(self, parent=None, custom_headers=None):
+        super().__init__(0, 3, parent)
+        
+        # Configurar a tabela
+        self.setHorizontalHeaderLabels(["Cabeçalho", "Valor", ""])
+        self.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
+        self.horizontalHeader().setDefaultSectionSize(30)
+        
+        # Criar e configurar o delegate para auto-completar
+        headers_list = COMMON_HEADERS.copy()
+        if custom_headers:
+            headers_list.extend(list(custom_headers))
+            
+        self.header_delegate = HeaderCompleterDelegate(self, headers_list)
+        self.setItemDelegateForColumn(0, self.header_delegate)
+        
+        # Adicionar linha vazia
+        self.add_empty_row()
+    
+    def add_empty_row(self):
+        """Adiciona uma linha vazia à tabela"""
+        row = self.rowCount()
+        self.insertRow(row)
+        
+        # Criar botão para remover a linha
+        delete_button = QPushButton("×")
+        delete_button.setFixedSize(24, 24)
+        delete_button.clicked.connect(lambda _, r=row: self.removeRow(r))  # Captura a linha específica
+        
+        self.setCellWidget(row, 2, delete_button)
+        
+        return row
+        
+    def add_header_to_autocomplete(self, header):
+        """Adiciona um cabeçalho à lista de auto-completar"""
+        if header:
+            self.header_delegate.add_header(header)
 
 
 class JsonHighlighter(QSyntaxHighlighter):
@@ -114,6 +209,9 @@ class RequestTab(QWidget):
     request_saved = pyqtSignal(Request)
     # Sinal para solicitar salvar na coleção
     save_to_collection = pyqtSignal()
+    
+    # Lista compartilhada de cabeçalhos personalizados entre todas as instâncias
+    custom_headers = set()
     
     def __init__(self, request: Request, storage: Storage):
         super().__init__()
@@ -218,12 +316,8 @@ class RequestTab(QWidget):
         headers_widget = QWidget()
         headers_layout = QVBoxLayout(headers_widget)
         
-        self.headers_table = QTableWidget(0, 3)
-        self.headers_table.setHorizontalHeaderLabels(["Chave", "Valor", ""])
-        self.headers_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.headers_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.headers_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
-        self.headers_table.horizontalHeader().setDefaultSectionSize(30)
+        # Iniciar a tabela de cabeçalhos com cabeçalhos conhecidos e personalizados
+        self.headers_table = HeaderTableWidget(self, RequestTab.custom_headers)
         self.headers_table.itemChanged.connect(self._on_table_changed)
         
         headers_layout.addWidget(self.headers_table)
@@ -482,7 +576,14 @@ class RequestTab(QWidget):
             value_item = self.headers_table.item(row, 1)
             
             if key_item and key_item.text() and value_item:
-                headers[key_item.text()] = value_item.text()
+                header_key = key_item.text()
+                headers[header_key] = value_item.text()
+                
+                # Adicionar ao conjunto de cabeçalhos personalizados
+                if header_key not in COMMON_HEADERS:
+                    RequestTab.custom_headers.add(header_key)
+                    # Atualizar a lista de auto-completar
+                    self.headers_table.add_header_to_autocomplete(header_key)
         
         self.request.headers = headers
         

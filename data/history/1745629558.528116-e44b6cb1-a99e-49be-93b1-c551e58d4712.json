@@ -4,7 +4,8 @@
   "url": "https://fakestoreapi.com/products/6",
   "method": "DELETE",
   "headers": {
-    "Content-Type": "application/json"
+    "Content-Type": "application/json",
+    "Authorization": "teste"
   },
   "params": {},
   "body": {
