@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import (
     QMainWindow, QTabWidget, QSplitter, QTreeView, QVBoxLayout, 
     QHBoxLayout, QWidget, QAction, QToolBar, QStatusBar, QMessageBox,
     QMenu, QInputDialog, QLineEdit, QDialog, QDialogButtonBox, QComboBox,
-    QLabel
+    QLabel, QActionGroup
 )
 from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtGui import QIcon
@@ -19,6 +19,7 @@ from src.ui.environment_dialog import EnvironmentDialog
 from src.models.collection import Collection, Folder
 from src.models.request import Request
 from src.models.environment import Environment
+from src.ui.styles import LIGHT_STYLE, DARK_STYLE
 
 
 class SelectCollectionDialog(QDialog):
@@ -30,6 +31,10 @@ class SelectCollectionDialog(QDialog):
         
         self.setWindowTitle("Salvar na Coleção")
         self.setMinimumWidth(400)
+        
+        # Herdar estilo da janela principal
+        if parent and parent.styleSheet():
+            self.setStyleSheet(parent.styleSheet())
         
         layout = QVBoxLayout(self)
         
@@ -70,11 +75,18 @@ class MainWindow(QMainWindow):
         self.current_environment = None
         self.current_variables = {}
         
+        # Configurações de tema
+        self.is_dark_theme = False
+        self._load_settings()
+        
         # Criar os componentes da interface
         self._create_ui()
         
         # Carregar dados
         self._load_data()
+        
+        # Aplicar tema inicial
+        self._apply_theme()
     
     def _create_ui(self):
         """Cria a interface do usuário"""
@@ -165,6 +177,22 @@ class MainWindow(QMainWindow):
         self.manage_environments_action = QAction("Gerenciar Ambientes", self)
         self.manage_environments_action.setStatusTip("Gerenciar ambientes e variáveis")
         self.manage_environments_action.triggered.connect(self._show_environments_dialog)
+        
+        # Ações para alternar tema
+        self.theme_group = QActionGroup(self)
+        self.theme_group.setExclusive(True)
+        
+        self.light_theme_action = QAction("Tema Claro", self)
+        self.light_theme_action.setCheckable(True)
+        self.light_theme_action.setChecked(not self.is_dark_theme)
+        self.light_theme_action.triggered.connect(lambda: self._toggle_theme(False))
+        self.theme_group.addAction(self.light_theme_action)
+        
+        self.dark_theme_action = QAction("Tema Escuro", self)
+        self.dark_theme_action.setCheckable(True)
+        self.dark_theme_action.setChecked(self.is_dark_theme)
+        self.dark_theme_action.triggered.connect(lambda: self._toggle_theme(True))
+        self.theme_group.addAction(self.dark_theme_action)
     
     def _create_toolbar(self):
         """Cria a barra de ferramentas"""
@@ -217,7 +245,11 @@ class MainWindow(QMainWindow):
         
         # Menu Visualizar
         view_menu = menu_bar.addMenu("Visualizar")
-        # Adicionar ações posteriormente
+        
+        # Submenu de temas
+        theme_menu = view_menu.addMenu("Tema")
+        theme_menu.addAction(self.light_theme_action)
+        theme_menu.addAction(self.dark_theme_action)
         
         # Menu Ambientes
         environment_menu = menu_bar.addMenu("Ambientes")
@@ -910,4 +942,29 @@ class MainWindow(QMainWindow):
                 self.storage.save_collection(collection)
             
             # Verificar níveis mais profundos
-            self._remove_request_from_subfolders(subfolder, request_id, collection) 
+            self._remove_request_from_subfolders(subfolder, request_id, collection)
+    
+    def _toggle_theme(self, dark_mode):
+        """Alterna entre os temas claro e escuro"""
+        if dark_mode != self.is_dark_theme:
+            self.is_dark_theme = dark_mode
+            self._apply_theme()
+            self._save_settings()
+    
+    def _apply_theme(self):
+        """Aplica o tema atual à interface"""
+        style = DARK_STYLE if self.is_dark_theme else LIGHT_STYLE
+        self.setStyleSheet(style)
+    
+    def _load_settings(self):
+        """Carrega as configurações do armazenamento"""
+        settings = self.storage.get_settings()
+        
+        if 'theme' in settings:
+            self.is_dark_theme = settings['theme'] == 'dark'
+    
+    def _save_settings(self):
+        """Salva as configurações no armazenamento"""
+        settings = self.storage.get_settings()
+        settings['theme'] = 'dark' if self.is_dark_theme else 'light'
+        self.storage.save_settings(settings) 

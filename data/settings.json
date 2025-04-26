@@ -1,5 +1,5 @@
 {
-  "theme": "light",
+  "theme": "dark",
   "window": {
     "width": 1200,
     "height": 800,
@@ -20,4 +20,4 @@
     "max_items": 50,
     "auto_save": true
   }
-} 
+}

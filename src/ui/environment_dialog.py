@@ -31,6 +31,10 @@ class EnvironmentDialog(QDialog):
         self.setWindowTitle("Gerenciar Ambientes")
         self.setMinimumSize(800, 500)
         
+        # Herdar estilo da janela principal
+        if parent and parent.styleSheet():
+            self.setStyleSheet(parent.styleSheet())
+        
         self._create_ui()
         self._load_environments()
     
