@@ -17,6 +17,7 @@ from PyQt5.QtGui import QColor, QSyntaxHighlighter, QTextCharFormat, QFont
 from src.models.request import Request, Response
 from src.core.http_client import HttpClient
 from src.core.storage import Storage
+from src.ui.variable_completer import VariableCompleter
 
 
 # Lista de cabeçalhos HTTP comuns
@@ -221,11 +222,17 @@ class RequestTab(QWidget):
         self.response = None
         self._has_unsaved_changes = False
         
+        # Completer para variáveis de ambiente
+        self.variable_completer = VariableCompleter(self)
+        
         # Criar a interface
         self._create_ui()
         
         # Preencher os campos com os dados da requisição
         self._populate_fields()
+        
+        # Configurar autocomplete para variáveis
+        self._setup_variable_autocomplete()
     
     def _create_ui(self):
         """Cria a interface do usuário"""
@@ -239,7 +246,7 @@ class RequestTab(QWidget):
         
         # Botão para enviar a requisição
         self.send_button = QPushButton("Enviar")
-        self.send_button.clicked.connect(self._send_request)
+        self.send_button.clicked.connect(self._on_send_clicked)
         toolbar.addWidget(self.send_button)
         
         # Botão para salvar a requisição
@@ -651,8 +658,20 @@ class RequestTab(QWidget):
         # Emitir sinal para a janela principal
         self.save_to_collection.emit()
     
+    def _on_send_clicked(self):
+        """
+        Manipula o clique no botão de enviar requisição.
+        Verifica se deve usar o ambiente atual ou não.
+        """
+        # Buscar a janela principal para verificar se há um ambiente selecionado
+        main_window = self.window()
+        if hasattr(main_window, 'current_variables') and main_window.current_variables:
+            self._send_request_with_environment(main_window.current_variables)
+        else:
+            self._send_request()
+    
     def _send_request(self):
-        """Envia a requisição"""
+        """Envia a requisição sem variáveis de ambiente"""
         # Atualizar os dados da requisição
         self._update_request_from_fields()
         
@@ -665,6 +684,94 @@ class RequestTab(QWidget):
         
         # Exibir a resposta
         self._display_response(response, error)
+    
+    def _send_request_with_environment(self, variables=None):
+        """Envia a requisição usando variáveis de ambiente"""
+        if variables is None:
+            variables = {}
+            
+        # Atualizar os dados da requisição
+        self._update_request_from_fields()
+        
+        # Mostrar informações sobre as variáveis que serão substituídas
+        self._show_variable_substitutions(variables)
+        
+        # Enviar a requisição com as variáveis de ambiente
+        response, error = HttpClient.send_request(self.request, variables)
+        self.response = response
+        
+        # Adicionar ao histórico
+        self.storage.add_to_history(self.request)
+        
+        # Exibir a resposta
+        self._display_response(response, error)
+    
+    def _show_variable_substitutions(self, variables):
+        """
+        Exibe uma mensagem com as substituições de variáveis que serão feitas.
+        
+        Args:
+            variables (dict): Dicionário com as variáveis disponíveis
+        """
+        if not variables:
+            # Se não há variáveis, não há o que mostrar
+            return
+            
+        # Encontrar todas as variáveis usadas na requisição
+        used_variables = set()
+        
+        # Verificar URL
+        used_in_url = self.variable_completer.find_variables_in_text(self.url_edit.text())
+        used_variables.update(used_in_url)
+        
+        # Verificar nome da requisição
+        used_in_name = self.variable_completer.find_variables_in_text(self.name_edit.text())
+        used_variables.update(used_in_name)
+        
+        # Verificar corpo
+        if self.body_type_combo.currentText() == "raw":
+            used_in_body = self.variable_completer.find_variables_in_text(self.body_editor.toPlainText())
+            used_variables.update(used_in_body)
+        
+        # Verificar parâmetros e cabeçalhos
+        for table in [self.params_table, self.headers_table]:
+            for row in range(table.rowCount()):
+                for col in range(2):  # Chave e valor
+                    item = table.item(row, col)
+                    if item and item.text():
+                        used_in_table = self.variable_completer.find_variables_in_text(item.text())
+                        used_variables.update(used_in_table)
+        
+        # Filtrar apenas as variáveis que existem no ambiente
+        valid_variables = {var for var in used_variables if var in variables}
+        missing_variables = used_variables - valid_variables
+        
+        # Se não há variáveis válidas, não mostrar mensagem
+        if not valid_variables and not missing_variables:
+            return
+            
+        # Construir mensagem
+        message = "Variáveis encontradas na requisição:\n\n"
+        
+        if valid_variables:
+            message += "Serão substituídas:\n"
+            for var in sorted(valid_variables):
+                value = variables[var]
+                # Limitar o tamanho do valor exibido
+                if len(value) > 50:
+                    value = value[:47] + "..."
+                message += f"- {{{{@{var}}}}} => {value}\n"
+            message += "\n"
+            
+        if missing_variables:
+            message += "Não encontradas no ambiente atual:\n"
+            for var in sorted(missing_variables):
+                message += f"- {{{{@{var}}}}}\n"
+        
+        # Exibir mensagem ao usuário
+        parent = self.window()
+        if hasattr(parent, 'statusBar'):
+            parent.statusBar().showMessage(f"Usando {len(valid_variables)} variáveis do ambiente.", 3000)
     
     def _display_response(self, response: Response, error: str = None):
         """Exibe a resposta na interface"""
@@ -769,4 +876,55 @@ class RequestTab(QWidget):
                 "Erro de formatação",
                 f"Não foi possível processar o JSON. Erro: {str(e)}",
                 QMessageBox.Ok
-            ) 
+            )
+
+    def _setup_variable_autocomplete(self):
+        """Configura o autocomplete para variáveis de ambiente"""
+        # Conectar aos campos de texto
+        self.variable_completer.connect_to_lineedit(self.url_edit)
+        self.variable_completer.connect_to_lineedit(self.name_edit)
+        self.variable_completer.connect_to_textedit(self.body_editor)
+        
+        # Conectar eventos de alteração de célula da tabela para detectar variáveis
+        self.params_table.cellChanged.connect(self._check_variable_in_table_cell)
+        self.headers_table.cellChanged.connect(self._check_variable_in_table_cell)
+    
+    def _check_variable_in_table_cell(self, row, column):
+        """
+        Verifica se há referências a variáveis em uma célula de tabela
+        e adiciona as novas variáveis à lista de variáveis conhecidas.
+        
+        Args:
+            row (int): Linha da célula
+            column (int): Coluna da célula
+        """
+        # Apenas verificar a coluna de valores (1)
+        if column != 1:
+            return
+        
+        # Obter a tabela que emitiu o sinal
+        table = self.sender()
+        if not table:
+            return
+        
+        # Obter o item da célula
+        item = table.item(row, column)
+        if not item:
+            return
+        
+        # Verificar se há variáveis no texto
+        text = item.text()
+        if not text:
+            return
+        
+        # Extrair variáveis do texto
+        variables = self.variable_completer.find_variables_in_text(text)
+    
+    def set_available_variables(self, variables):
+        """
+        Define as variáveis disponíveis para autocompletar.
+        
+        Args:
+            variables (dict): Dicionário com as variáveis disponíveis
+        """
+        self.variable_completer.set_variables(variables) 

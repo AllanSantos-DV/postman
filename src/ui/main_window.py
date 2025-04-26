@@ -15,8 +15,10 @@ from PyQt5.QtGui import QIcon
 from src.core.storage import Storage
 from src.ui.request_tab import RequestTab
 from src.ui.collection_tree_model import CollectionTreeModel
+from src.ui.environment_dialog import EnvironmentDialog
 from src.models.collection import Collection, Folder
 from src.models.request import Request
+from src.models.environment import Environment
 
 
 class SelectCollectionDialog(QDialog):
@@ -63,6 +65,10 @@ class MainWindow(QMainWindow):
         
         # Inicializar o armazenamento
         self.storage = Storage()
+        
+        # Ambiente selecionado
+        self.current_environment = None
+        self.current_variables = {}
         
         # Criar os componentes da interface
         self._create_ui()
@@ -154,6 +160,11 @@ class MainWindow(QMainWindow):
         self.save_to_collection_action = QAction("Salvar na Coleção", self)
         self.save_to_collection_action.setStatusTip("Salvar requisição em uma coleção")
         self.save_to_collection_action.triggered.connect(self._save_current_request_to_collection)
+        
+        # Ação para gerenciar ambientes
+        self.manage_environments_action = QAction("Gerenciar Ambientes", self)
+        self.manage_environments_action.setStatusTip("Gerenciar ambientes e variáveis")
+        self.manage_environments_action.triggered.connect(self._show_environments_dialog)
     
     def _create_toolbar(self):
         """Cria a barra de ferramentas"""
@@ -170,6 +181,19 @@ class MainWindow(QMainWindow):
         self.toolbar.addSeparator()
         self.toolbar.addAction(self.import_action)
         self.toolbar.addAction(self.export_action)
+        
+        # Adicionar seletor de ambiente
+        self.toolbar.addSeparator()
+        self.toolbar.addWidget(QLabel("Ambiente: "))
+        
+        self.environment_combo = QComboBox()
+        self.environment_combo.setMinimumWidth(150)
+        self.environment_combo.addItem("Nenhum", None)
+        self.environment_combo.currentIndexChanged.connect(self._on_environment_changed)
+        self.toolbar.addWidget(self.environment_combo)
+        
+        # Botão para gerenciar ambientes
+        self.toolbar.addAction(self.manage_environments_action)
     
     def _create_menu(self):
         """Cria o menu principal"""
@@ -195,6 +219,10 @@ class MainWindow(QMainWindow):
         view_menu = menu_bar.addMenu("Visualizar")
         # Adicionar ações posteriormente
         
+        # Menu Ambientes
+        environment_menu = menu_bar.addMenu("Ambientes")
+        environment_menu.addAction(self.manage_environments_action)
+        
         # Menu Ajuda
         help_menu = menu_bar.addMenu("Ajuda")
         about_action = QAction("Sobre", self)
@@ -204,6 +232,68 @@ class MainWindow(QMainWindow):
         """Carrega os dados do armazenamento"""
         # Atualizar o modelo de coleções
         self.collection_model.load_collections()
+        
+        # Carregar ambientes
+        self._load_environments()
+    
+    def _load_environments(self):
+        """Carrega os ambientes do armazenamento"""
+        # Salvar o ambiente atual selecionado
+        current_env_id = self.environment_combo.currentData()
+        
+        # Limpar combobox
+        self.environment_combo.clear()
+        self.environment_combo.addItem("Nenhum", None)
+        
+        # Carregar ambientes
+        environments = self.storage.get_all_environments()
+        
+        for env in environments:
+            self.environment_combo.addItem(env.name, env.id)
+        
+        # Restaurar a seleção anterior, se possível
+        if current_env_id:
+            index = self.environment_combo.findData(current_env_id)
+            if index >= 0:
+                self.environment_combo.setCurrentIndex(index)
+    
+    def _on_environment_changed(self, index):
+        """Manipula a mudança de ambiente selecionado"""
+        env_id = self.environment_combo.currentData()
+        
+        if env_id:
+            self.current_environment = self.storage.get_environment(env_id)
+            self.current_variables = self.current_environment.variables.copy() if self.current_environment else {}
+        else:
+            self.current_environment = None
+            self.current_variables = {}
+        
+        # Atualizar as variáveis disponíveis em todas as guias abertas
+        for i in range(self.request_tabs.count()):
+            tab = self.request_tabs.widget(i)
+            if hasattr(tab, 'set_available_variables'):
+                tab.set_available_variables(self.current_variables)
+        
+        self.status_bar.showMessage(f"Ambiente atual: {self.environment_combo.currentText()}")
+    
+    def _show_environments_dialog(self):
+        """Mostra o diálogo de gerenciamento de ambientes"""
+        dialog = EnvironmentDialog(self.storage, self)
+        dialog.environment_updated.connect(self._load_environments)
+        
+        # Se o diálogo for aceito, atualizar as variáveis em todas as guias
+        if dialog.exec_() == EnvironmentDialog.Accepted:
+            # Recarregar o ambiente atual
+            env_id = self.environment_combo.currentData()
+            if env_id:
+                self.current_environment = self.storage.get_environment(env_id)
+                self.current_variables = self.current_environment.variables.copy() if self.current_environment else {}
+                
+                # Atualizar as variáveis disponíveis em todas as guias abertas
+                for i in range(self.request_tabs.count()):
+                    tab = self.request_tabs.widget(i)
+                    if hasattr(tab, 'set_available_variables'):
+                        tab.set_available_variables(self.current_variables)
     
     def _create_new_request(self):
         """Cria uma nova requisição em uma nova guia"""
@@ -224,6 +314,10 @@ class MainWindow(QMainWindow):
         # Conectar sinais
         request_tab.request_saved.connect(self._on_request_saved)
         request_tab.save_to_collection.connect(self._save_current_request_to_collection)
+        
+        # Definir as variáveis disponíveis
+        if hasattr(request_tab, 'set_available_variables'):
+            request_tab.set_available_variables(self.current_variables)
         
         # Adicionar à guia e selecionar
         index = self.request_tabs.addTab(request_tab, request.name)
@@ -251,6 +345,33 @@ class MainWindow(QMainWindow):
         
         # Remover a guia
         self.request_tabs.removeTab(index)
+    
+    def _get_current_request_tab(self):
+        """Retorna a guia de requisição atual"""
+        index = self.request_tabs.currentIndex()
+        if index >= 0:
+            return self.request_tabs.widget(index)
+        return None
+    
+    def _on_request_saved(self, request):
+        """Chamado quando uma requisição é salva"""
+        # Atualizar o título da guia
+        index = self.request_tabs.currentIndex()
+        if index >= 0:
+            self.request_tabs.setTabText(index, request.name)
+    
+    def _send_request(self):
+        """Envia a requisição da guia atual usando o ambiente selecionado"""
+        tab = self._get_current_request_tab()
+        if not tab:
+            return
+            
+        # Usar o método de envio com ambiente se estiver implementado
+        if hasattr(tab, '_send_request_with_environment'):
+            tab._send_request_with_environment(self.current_variables)
+        else:
+            # Fallback para método existente se não implementamos a versão com ambiente
+            tab._send_request()
     
     def _create_new_collection(self):
         """Cria uma nova coleção"""
@@ -343,18 +464,6 @@ class MainWindow(QMainWindow):
             
             # Se não estiver aberta, criar uma nova guia
             self._add_request_tab(request)
-    
-    def _on_request_saved(self, request):
-        """Atualiza a interface quando uma requisição é salva"""
-        # Atualizar o nome da guia
-        for i in range(self.request_tabs.count()):
-            tab = self.request_tabs.widget(i)
-            if hasattr(tab, 'request') and tab.request.id == request.id:
-                self.request_tabs.setTabText(i, request.name)
-                break
-        
-        # Atualizar o modelo de coleções
-        self.collection_model.load_collections()
     
     def _save_current_request_to_collection(self):
         """Salva a requisição atual em uma coleção"""

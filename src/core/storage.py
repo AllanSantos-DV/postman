@@ -9,6 +9,7 @@ from pathlib import Path
 
 from src.models.request import Request
 from src.models.collection import Collection, Folder
+from src.models.environment import Environment
 
 
 class Storage:
@@ -20,6 +21,7 @@ class Storage:
         self.collections_dir = self.base_dir / "collections"
         self.requests_dir = self.base_dir / "requests"
         self.history_dir = self.base_dir / "history"
+        self.environments_dir = self.base_dir / "environments"
         self.settings_file = self.base_dir / "settings.json"
         
         # Criar diretórios se não existirem
@@ -31,6 +33,7 @@ class Storage:
         self.collections_dir.mkdir(exist_ok=True)
         self.requests_dir.mkdir(exist_ok=True)
         self.history_dir.mkdir(exist_ok=True)
+        self.environments_dir.mkdir(exist_ok=True)
     
     def _write_json(self, path: Path, data: Dict[str, Any]) -> None:
         """Escreve dados em formato JSON em um arquivo"""
@@ -108,6 +111,43 @@ class Storage:
         
         request_path.unlink()
         return True
+    
+    # === AMBIENTES ===
+    
+    def save_environment(self, environment: Environment) -> None:
+        """Salva um ambiente no armazenamento local"""
+        env_path = self.environments_dir / f"{environment.id}.json"
+        self._write_json(env_path, environment.to_dict())
+    
+    def get_environment(self, environment_id: str) -> Optional[Environment]:
+        """Recupera um ambiente do armazenamento local"""
+        env_path = self.environments_dir / f"{environment_id}.json"
+        
+        if not env_path.exists():
+            return None
+        
+        data = self._read_json(env_path)
+        return Environment.from_dict(data)
+    
+    def delete_environment(self, environment_id: str) -> bool:
+        """Remove um ambiente do armazenamento local"""
+        env_path = self.environments_dir / f"{environment_id}.json"
+        
+        if not env_path.exists():
+            return False
+        
+        env_path.unlink()
+        return True
+    
+    def get_all_environments(self) -> List[Environment]:
+        """Recupera todos os ambientes do armazenamento local"""
+        environments = []
+        
+        for file_path in self.environments_dir.glob("*.json"):
+            data = self._read_json(file_path)
+            environments.append(Environment.from_dict(data))
+        
+        return environments
     
     # === HISTÓRICO ===
     
