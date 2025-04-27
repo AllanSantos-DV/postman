@@ -516,19 +516,108 @@ def _convert_request_to_postman(request: Request) -> Dict[str, Any]:
         }
     }
     
+    # Decompor e processar a URL para o formato Postman
+    try:
+        # Separar protocolo do resto
+        url = request.url
+        protocol = ""
+        host_path = url
+        
+        if "://" in url:
+            parts = url.split("://", 1)
+            protocol = parts[0]
+            host_path = parts[1]
+        
+        # Separar host/porta do caminho
+        path = ""
+        query = ""
+        if "/" in host_path:
+            parts = host_path.split("/", 1)
+            host_port = parts[0]
+            path = "/" + parts[1]
+        else:
+            host_port = host_path
+        
+        # Separar query string
+        if "?" in path:
+            parts = path.split("?", 1)
+            path = parts[0]
+            query = parts[1]
+        
+        # Separar host e porta
+        host = host_port
+        port = ""
+        if ":" in host_port and not "]" in host_port.split(":", 1)[1]:  # IPv6 handling
+            parts = host_port.split(":", 1)
+            host = parts[0]
+            port = parts[1]
+        
+        # Preencher a estrutura URL do Postman
+        url_obj = {
+            "raw": request.url
+        }
+        
+        # Adicionar protocolo se existir
+        if protocol:
+            url_obj["protocol"] = protocol
+        
+        # Host sempre como array de domínios/subdomínios
+        url_obj["host"] = host.split(".")
+        
+        # Porta se existir
+        if port:
+            url_obj["port"] = port
+        
+        # Caminho como array de segmentos
+        if path and path != "/":
+            # Remover a barra inicial e dividir
+            path_segments = path.strip("/").split("/")
+            if path_segments and path_segments[0]:  # Se não for uma string vazia
+                url_obj["path"] = path_segments
+        
+        # Adicionar query params da URL
+        query_items = []
+        
+        # Adicionar os do parser de URL
+        if query:
+            for param in query.split("&"):
+                if "=" in param:
+                    key, value = param.split("=", 1)
+                    query_items.append({
+                        "key": key,
+                        "value": value
+                    })
+        
+        # Adicionar params explícitos
+        for key, value in request.params.items():
+            # Verificar se já não foi adicionado pelo parser de URL
+            exists = False
+            for q in query_items:
+                if q["key"] == key:
+                    exists = True
+                    break
+            
+            if not exists:
+                query_items.append({
+                    "key": key,
+                    "value": value
+                })
+        
+        if query_items:
+            url_obj["query"] = query_items
+        
+        # Substituir a estrutura de URL
+        postman_request["request"]["url"] = url_obj
+    except Exception as e:
+        # Em caso de erro no parsing, manter o formato básico
+        print(f"Erro ao processar URL '{request.url}': {str(e)}")
+    
     # Adicionar cabeçalhos
     for key, value in request.headers.items():
         postman_request["request"]["header"].append({
             "key": key,
             "value": value,
             "type": "text"
-        })
-    
-    # Adicionar parâmetros de consulta
-    for key, value in request.params.items():
-        postman_request["request"]["url"]["query"].append({
-            "key": key,
-            "value": value
         })
     
     # Adicionar corpo da requisição, se houver
@@ -548,6 +637,9 @@ def _convert_request_to_postman(request: Request) -> Dict[str, Any]:
             body["raw"] = request.body
         
         postman_request["request"]["body"] = body
+    
+    # Adicionar seção de respostas vazia (compatibilidade com Postman)
+    postman_request["response"] = []
     
     return postman_request
 
