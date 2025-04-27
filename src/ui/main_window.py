@@ -7,10 +7,11 @@ from PyQt5.QtWidgets import (
     QMainWindow, QTabWidget, QSplitter, QTreeView, QVBoxLayout, 
     QHBoxLayout, QWidget, QAction, QToolBar, QStatusBar, QMessageBox,
     QMenu, QInputDialog, QLineEdit, QDialog, QDialogButtonBox, QComboBox,
-    QLabel, QActionGroup, QAbstractItemView, QFileDialog, QRadioButton
+    QLabel, QActionGroup, QAbstractItemView, QFileDialog, QRadioButton,
+    QTextBrowser, QScrollArea
 )
-from PyQt5.QtCore import Qt, QSize
-from PyQt5.QtGui import QIcon
+from PyQt5.QtCore import Qt, QSize, QUrl
+from PyQt5.QtGui import QIcon, QPixmap
 
 from src.core.storage import Storage
 from src.ui.request_tab import RequestTab
@@ -56,6 +57,127 @@ class SelectCollectionDialog(QDialog):
     def get_selected_collection_id(self):
         """Retorna o ID da coleção selecionada"""
         return self.collection_combo.currentData()
+
+
+class AboutDialog(QDialog):
+    """
+    Diálogo Sobre com informações do aplicativo
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        self.setWindowTitle("Sobre PyRequestMan")
+        self.setMinimumSize(900, 700)
+        
+        # Herdar estilo da janela principal
+        if parent and parent.styleSheet():
+            self.setStyleSheet(parent.styleSheet())
+        
+        layout = QVBoxLayout(self)
+        
+        # Área com scroll para o conteúdo
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QScrollArea.NoFrame)
+        
+        content_widget = QWidget()
+        content_layout = QVBoxLayout(content_widget)
+        
+        # Título
+        title_label = QLabel("PyRequestMan")
+        title_label.setAlignment(Qt.AlignCenter)
+        font = title_label.font()
+        font.setPointSize(font.pointSize() + 10)
+        font.setBold(True)
+        title_label.setFont(font)
+        content_layout.addWidget(title_label)
+        
+        # Versão
+        version_label = QLabel("Versão 0.1.0")
+        version_label.setAlignment(Qt.AlignCenter)
+        content_layout.addWidget(version_label)
+        
+        # Espaçamento
+        content_layout.addSpacing(20)
+        
+        # Screenshot da aplicação
+        screenshot_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 
+                                      "resources", "screenshots", "main.png")
+        
+        if os.path.exists(screenshot_path):
+            screenshot_label = QLabel()
+            pixmap = QPixmap(screenshot_path)
+            pixmap = pixmap.scaled(500, 300, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            screenshot_label.setPixmap(pixmap)
+            screenshot_label.setAlignment(Qt.AlignCenter)
+            content_layout.addWidget(screenshot_label)
+        
+        content_layout.addSpacing(20)
+        
+        # Descrição do aplicativo
+        description = """
+        <h3>Descrição</h3>
+        <p>O PyRequestMan é um cliente HTTP similar ao Postman e Insomnia, desenvolvido inteiramente em Python.
+        Esta aplicação permite testar APIs REST de forma simples e intuitiva, sem necessidade de conexão com serviços externos.</p>
+        
+        <h3>Principais Funcionalidades</h3>
+        <ul>
+            <li>Suporte para todos os métodos HTTP (GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS)</li>
+            <li>Organização de requisições em coleções e pastas</li>
+            <li>Ambientes e variáveis para facilitar diferentes configurações</li>
+            <li>Formatação automática de respostas JSON</li>
+            <li>Histórico de requisições enviadas</li>
+            <li>Importação e exportação de coleções no formato Postman</li>
+            <li>Tema claro e escuro</li>
+        </ul>
+        
+        <h3>Como Utilizar</h3>
+        <h4>Criando uma Nova Requisição</h4>
+        <ol>
+            <li>Clique no botão "Nova Requisição" na barra de ferramentas ou no menu Arquivo</li>
+            <li>Escolha o método HTTP desejado (GET, POST, etc.)</li>
+            <li>Digite a URL da API que deseja acessar</li>
+            <li>Configure cabeçalhos, parâmetros ou corpo da requisição conforme necessário</li>
+            <li>Clique no botão "Enviar" para executar a requisição</li>
+            <li>A resposta será exibida abaixo com formatação adequada</li>
+        </ol>
+        
+        <h4>Trabalhando com Coleções</h4>
+        <ol>
+            <li>Crie uma nova coleção clicando com o botão direito no painel esquerdo</li>
+            <li>Adicione requisições à coleção usando o botão "Salvar na Coleção"</li>
+            <li>Organize suas requisições em pastas para melhor organização</li>
+            <li>Clique duas vezes em qualquer requisição na coleção para abri-la</li>
+            <li>Exporte suas coleções para compartilhar com outros usuários</li>
+        </ol>
+        
+        <h4>Utilizando Ambientes e Variáveis</h4>
+        <ol>
+            <li>Crie ambientes (dev, homologação, produção) no menu Ambientes</li>
+            <li>Defina variáveis para cada ambiente (como URL base, tokens, etc.)</li>
+            <li>Selecione o ambiente ativo na barra de ferramentas</li>
+            <li>Use variáveis nas suas requisições com a sintaxe {{nome_da_variavel}}</li>
+            <li>Alterne entre ambientes facilmente para testar diferentes configurações</li>
+        </ol>
+        """
+        
+        description_browser = QTextBrowser()
+        description_browser.setHtml(description)
+        description_browser.setOpenExternalLinks(True)
+        content_layout.addWidget(description_browser)
+        
+        # Adicionar informações de copyright
+        copyright_label = QLabel("© 2025 - Desenvolvido com Python e PyQt5")
+        copyright_label.setAlignment(Qt.AlignCenter)
+        content_layout.addWidget(copyright_label)
+        
+        scroll_area.setWidget(content_widget)
+        layout.addWidget(scroll_area)
+        
+        # Botões
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok)
+        buttons.accepted.connect(self.accept)
+        layout.addWidget(buttons)
 
 
 class MainWindow(QMainWindow):
@@ -282,8 +404,10 @@ class MainWindow(QMainWindow):
         
         # Menu Ajuda
         help_menu = menu_bar.addMenu("Ajuda")
-        about_action = QAction("Sobre", self)
-        help_menu.addAction(about_action)
+        self.about_action = QAction("Sobre", self)
+        self.about_action.setStatusTip("Informações sobre o aplicativo")
+        self.about_action.triggered.connect(self._show_about_dialog)
+        help_menu.addAction(self.about_action)
     
     def _load_data(self):
         """Carrega os dados do armazenamento"""
@@ -1203,4 +1327,9 @@ class MainWindow(QMainWindow):
         self.collection_model.load_collections()
         
         # Exibir mensagem de sucesso
-        self.status_bar.showMessage("Histórico de requisições limpo com sucesso", 3000) 
+        self.status_bar.showMessage("Histórico de requisições limpo com sucesso", 3000)
+
+    def _show_about_dialog(self):
+        """Mostra o diálogo Sobre"""
+        dialog = AboutDialog(self)
+        dialog.exec_() 
