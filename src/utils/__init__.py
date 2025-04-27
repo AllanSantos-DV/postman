@@ -1,3 +1,3 @@
 """
-Módulo utils - Funções utilitárias para a aplicação
+Módulo com funções utilitárias para o aplicativo
 """ 

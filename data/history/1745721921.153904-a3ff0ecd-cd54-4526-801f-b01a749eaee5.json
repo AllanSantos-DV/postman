@@ -1,0 +1,21 @@
+{
+  "id": "a3ff0ecd-cd54-4526-801f-b01a749eaee5",
+  "name": "Imported from cURL",
+  "url": "https://fakestoreapi.com/products",
+  "method": "POST",
+  "headers": {
+    "Content-Type": "application/json",
+    "Authorization": "products"
+  },
+  "params": {},
+  "body": {
+    "title": "products",
+    "price": "13.5",
+    "description": "lorem ipsum set",
+    "image": "https://i.pravatar.cc",
+    "category": "electronic"
+  },
+  "description": "",
+  "created_at": "2025-04-26T23:45:21.153904",
+  "updated_at": "2025-04-26T23:45:21.153904"
+}

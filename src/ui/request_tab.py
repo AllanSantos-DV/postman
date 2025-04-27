@@ -18,6 +18,7 @@ from src.models.request import Request, Response
 from src.core.http_client import HttpClient
 from src.core.storage import Storage
 from src.ui.variable_completer import VariableCompleter
+from src.utils.curl_converter import request_to_curl, curl_to_request
 
 
 # Lista de cabeçalhos HTTP comuns
@@ -471,6 +472,46 @@ class RequestTab(QWidget):
         
         self.request_tabs.addTab(body_widget, "Corpo")
         
+        # Guia de cURL
+        curl_widget = QWidget()
+        curl_layout = QVBoxLayout(curl_widget)
+        
+        # Editor de cURL
+        curl_editor_layout = QVBoxLayout()
+        
+        # Barra de ferramentas do editor de cURL
+        curl_toolbar = QHBoxLayout()
+        
+        # Botão para copiar o cURL
+        self.copy_curl_preview_button = QPushButton("Copiar cURL")
+        self.copy_curl_preview_button.clicked.connect(self._copy_curl_from_preview)
+        curl_toolbar.addWidget(self.copy_curl_preview_button)
+        
+        # Botão para atualizar o cURL
+        self.update_curl_button = QPushButton("Atualizar cURL")
+        self.update_curl_button.clicked.connect(self._update_curl_preview)
+        curl_toolbar.addWidget(self.update_curl_button)
+        
+        # Botão para importar o cURL
+        self.import_curl_button = QPushButton("Importar cURL")
+        self.import_curl_button.clicked.connect(self._import_curl)
+        curl_toolbar.addWidget(self.import_curl_button)
+        
+        curl_toolbar.addStretch()
+        curl_editor_layout.addLayout(curl_toolbar)
+        
+        # Editor de texto para cURL
+        self.curl_editor = QPlainTextEdit()
+        self.curl_editor.setPlaceholderText("Comando cURL")
+        curl_editor_layout.addWidget(self.curl_editor)
+        
+        curl_layout.addLayout(curl_editor_layout)
+        
+        self.request_tabs.addTab(curl_widget, "cURL")
+        
+        # Conectar o sinal de mudança de aba para atualizar o cURL quando a aba for selecionada
+        self.request_tabs.currentChanged.connect(self._on_tab_changed)
+        
         request_layout.addWidget(self.request_tabs)
         
         # === Área da Resposta ===
@@ -554,6 +595,10 @@ class RequestTab(QWidget):
                 except (ValueError, TypeError):
                     # Não é JSON, manter como texto plano
                     pass
+        
+        # Atualizar visualização cURL se existir
+        if hasattr(self, 'curl_editor'):
+            self._update_curl_preview()
         
         # Limpar o flag de alterações não salvas
         self._has_unsaved_changes = False
@@ -875,6 +920,137 @@ class RequestTab(QWidget):
             self.response_headers.setItem(row, 0, QTableWidgetItem(key))
             self.response_headers.setItem(row, 1, QTableWidgetItem(value))
     
+    def _copy_as_curl(self):
+        """Copia a requisição atual como comando cURL para a área de transferência"""
+        # Atualizar a requisição com os campos atuais
+        self._update_request_from_fields()
+        
+        # Obter variáveis de ambiente do ambiente atual, se houver
+        variables = None
+        main_window = self.window()
+        if hasattr(main_window, 'current_variables') and main_window.current_variables:
+            variables = main_window.current_variables
+        
+        # Obter o comando cURL
+        curl_command = request_to_curl(self.request, variables)
+        
+        # Copiar para a área de transferência
+        clipboard = QApplication.clipboard()
+        clipboard.setText(curl_command)
+        
+        # Mostrar mensagem de sucesso na barra de status
+        parent = self.window()
+        if hasattr(parent, 'statusBar'):
+            parent.statusBar().showMessage("Comando cURL copiado para a área de transferência", 3000)
+    
+    def _update_curl_preview(self):
+        """Atualiza a visualização de cURL com a requisição atual"""
+        # Atualizar a requisição com os campos atuais
+        self._update_request_from_fields()
+        
+        # Obter variáveis de ambiente do ambiente atual, se houver
+        variables = None
+        main_window = self.window()
+        if hasattr(main_window, 'current_variables') and main_window.current_variables:
+            variables = main_window.current_variables
+        
+        # Obter o comando cURL
+        curl_command = request_to_curl(self.request, variables)
+        
+        # Atualizar o editor de cURL
+        self.curl_editor.setPlainText(curl_command)
+    
+    def _copy_curl_from_preview(self):
+        """Copia o comando cURL atual da área de previsualização"""
+        curl_command = self.curl_editor.toPlainText()
+        
+        if not curl_command:
+            # Se o texto estiver vazio, atualizar antes de copiar
+            self._update_curl_preview()
+            curl_command = self.curl_editor.toPlainText()
+        
+        # Copiar para a área de transferência
+        clipboard = QApplication.clipboard()
+        clipboard.setText(curl_command)
+        
+        # Mostrar mensagem de sucesso na barra de status
+        parent = self.window()
+        if hasattr(parent, 'statusBar'):
+            parent.statusBar().showMessage("Comando cURL copiado para a área de transferência", 3000)
+    
+    def _import_curl(self):
+        """Importa um comando cURL da área de previsualização para a requisição atual"""
+        curl_command = self.curl_editor.toPlainText().strip()
+        
+        if not curl_command:
+            QMessageBox.warning(
+                self,
+                "Comando cURL vazio",
+                "Por favor, insira um comando cURL válido para importar.",
+                QMessageBox.Ok
+            )
+            return
+        
+        try:
+            # Converter o comando cURL para um objeto Request
+            imported_request = curl_to_request(curl_command)
+            
+            # Perguntar se deve substituir toda a requisição ou apenas partes
+            reply = QMessageBox.question(
+                self,
+                "Importar cURL",
+                "Como deseja importar o comando cURL?\n\n"
+                "- Sim: Substituir toda a requisição atual\n"
+                "- Não: Mesclar com a requisição atual (manter nome e descrição)",
+                QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel
+            )
+            
+            if reply == QMessageBox.Cancel:
+                return
+                
+            # Mesclar ou substituir a requisição
+            if reply == QMessageBox.Yes:
+                # Substituir toda a requisição (manter apenas ID e timestamps)
+                id_original = self.request.id
+                created_at = self.request.created_at
+                updated_at = self.request.updated_at
+                
+                self.request = imported_request
+                self.request.id = id_original
+                self.request.created_at = created_at
+                self.request.updated_at = updated_at
+            else:
+                # Mesclar apenas URL, método, headers, params e body
+                self.request.url = imported_request.url
+                self.request.method = imported_request.method
+                self.request.params = imported_request.params
+                self.request.body = imported_request.body
+                
+                # Para headers, substituir completamente ao invés de mesclar
+                self.request.headers = imported_request.headers.copy()
+            
+            # Atualizar a interface com os novos dados
+            
+            # Limpar as tabelas existentes antes de repopular
+            self.headers_table.setRowCount(0)
+            self.params_table.setRowCount(0)
+            
+            # Repopular todos os campos
+            self._populate_fields()
+            
+            # Mostrar mensagem de sucesso
+            parent = self.window()
+            if hasattr(parent, 'statusBar'):
+                parent.statusBar().showMessage("Comando cURL importado com sucesso", 3000)
+                
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "Erro ao importar cURL",
+                f"Não foi possível converter o comando cURL: {str(e)}",
+                QMessageBox.Ok
+            )
+    
     def _on_content_type_changed(self, content_type):
         """Atualiza a interface quando o tipo de conteúdo muda"""
         # Mostrar ou esconder o botão de formatação JSON
@@ -961,4 +1137,11 @@ class RequestTab(QWidget):
         Args:
             variables (dict): Dicionário com as variáveis disponíveis
         """
-        self.variable_completer.set_variables(variables) 
+        self.variable_completer.set_variables(variables)
+
+    def _on_tab_changed(self, index):
+        """Chamado quando a aba atual é alterada"""
+        # Verificar se a aba selecionada é a de cURL
+        if self.request_tabs.tabText(index) == "cURL":
+            # Atualizar a visualização de cURL
+            self._update_curl_preview() 
