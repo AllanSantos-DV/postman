@@ -16,6 +16,17 @@ class CollectionTreeItem(QStandardItem):
         super().__init__(name)
         self.item_type = item_type  # "collection", "folder", ou "request"
         self.data = data  # O ID da coleção/pasta/requisição
+        
+        # Definir flags para os itens da árvore
+        # Todos os itens são editáveis, exceto os nós raiz
+        if item_type in ["collection", "folder", "request"]:
+            self.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsEditable)
+            # Para itens de requisição, também permitimos arrastar (drag)
+            if item_type == "request":
+                self.setFlags(self.flags() | Qt.ItemIsDragEnabled)
+        else:
+            # Nós raiz não são editáveis
+            self.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
 
 
 class CollectionTreeModel(QStandardItemModel):
@@ -30,7 +41,10 @@ class CollectionTreeModel(QStandardItemModel):
         
         # Adicionar nós raiz
         self.collections_root = QStandardItem("Coleções")
+        self.collections_root.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)  # Não editável
+        
         self.history_root = QStandardItem("Histórico")
+        self.history_root.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)  # Não editável
         
         self.appendRow(self.collections_root)
         self.appendRow(self.history_root)

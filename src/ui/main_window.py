@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import (
     QMainWindow, QTabWidget, QSplitter, QTreeView, QVBoxLayout, 
     QHBoxLayout, QWidget, QAction, QToolBar, QStatusBar, QMessageBox,
     QMenu, QInputDialog, QLineEdit, QDialog, QDialogButtonBox, QComboBox,
-    QLabel, QActionGroup
+    QLabel, QActionGroup, QAbstractItemView
 )
 from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtGui import QIcon
@@ -106,9 +106,15 @@ class MainWindow(QMainWindow):
         self.collection_tree.customContextMenuRequested.connect(self._show_collection_context_menu)
         self.collection_tree.doubleClicked.connect(self._on_collection_item_double_clicked)
         
+        # Permitir edição in-place dos itens da árvore
+        self.collection_tree.setEditTriggers(QAbstractItemView.EditKeyPressed | QAbstractItemView.DoubleClicked)
+        
         # Modelo para a árvore de coleções
         self.collection_model = CollectionTreeModel(self.storage)
         self.collection_tree.setModel(self.collection_model)
+        
+        # Conectar o sinal de edição de item
+        self.collection_model.itemChanged.connect(self._on_collection_item_changed)
         
         self.left_layout.addWidget(self.collection_tree)
         self.main_splitter.addWidget(self.left_panel)
@@ -479,6 +485,67 @@ class MainWindow(QMainWindow):
         if item_type == "request":
             # Abrir a requisição em uma nova guia
             self._open_request(item.data)
+        elif item_type in ["collection", "folder"]:
+            # Para coleções e pastas, permitir a edição in-place
+            # (não fazemos nada explicitamente, a QTreeView já cuidará disso
+            # com as configurações de EditTriggers que definimos)
+            pass
+    
+    def _on_collection_item_changed(self, item):
+        """Chamado quando um item na árvore de coleções é editado"""
+        # Verificar se o item possui tipo e dados
+        item_type = getattr(item, "item_type", None)
+        item_data = getattr(item, "data", None)
+        
+        if not (item_type and item_data):
+            return
+        
+        # Pegar o novo nome do item
+        new_name = item.text()
+        
+        # Atualizar o nome de acordo com o tipo
+        if item_type == "collection":
+            self._update_collection_name(item_data, new_name)
+        elif item_type == "folder":
+            self._update_folder_name(item_data, new_name)
+        elif item_type == "request":
+            self._update_request_name(item_data, new_name)
+    
+    def _update_collection_name(self, collection_id, new_name):
+        """Atualiza o nome de uma coleção"""
+        collection = self.storage.get_collection(collection_id)
+        if collection and new_name:
+            collection.name = new_name
+            self.storage.save_collection(collection)
+            # Não precisamos recarregar o modelo completo, pois apenas o nome foi alterado
+            # e isso já está refletido no item da árvore
+    
+    def _update_folder_name(self, folder_id, new_name):
+        """Atualiza o nome de uma pasta"""
+        # Buscamos a pasta em todas as coleções
+        for collection in self.storage.get_all_collections():
+            folder = self._find_folder_in_collection(collection, folder_id)
+            if folder and new_name:
+                folder.name = new_name
+                self.storage.save_collection(collection)
+                return
+    
+    def _update_request_name(self, request_id, new_name):
+        """Atualiza o nome de uma requisição"""
+        request = self.storage.get_request(request_id)
+        if request and new_name:
+            request.name = new_name
+            self.storage.save_request(request)
+            
+            # Atualizar também o nome na aba da requisição se estiver aberta
+            for i in range(self.request_tabs.count()):
+                tab = self.request_tabs.widget(i)
+                if hasattr(tab, 'request') and tab.request.id == request_id:
+                    self.request_tabs.setTabText(i, new_name)
+                    # Se a requisição está aberta, atualizar também o campo de nome
+                    if hasattr(tab, 'name_edit'):
+                        tab.name_edit.setText(new_name)
+                    break
     
     def _open_request(self, request_id):
         """Abre uma requisição em uma nova guia"""

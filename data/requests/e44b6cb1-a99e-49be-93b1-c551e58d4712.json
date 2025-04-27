@@ -1,6 +1,6 @@
 {
   "id": "e44b6cb1-a99e-49be-93b1-c551e58d4712",
-  "name": "Conselhos",
+  "name": "api testes",
   "url": "https://fakestoreapi.com/{{prod}}",
   "method": "POST",
   "headers": {
