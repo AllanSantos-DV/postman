@@ -201,6 +201,20 @@ class MainWindow(QMainWindow):
         self.dark_theme_action.setChecked(self.is_dark_theme)
         self.dark_theme_action.triggered.connect(lambda: self._toggle_theme(True))
         self.theme_group.addAction(self.dark_theme_action)
+        
+        # Ações para o menu Editar
+        self.rename_action = QAction("Renomear", self)
+        self.rename_action.setStatusTip("Renomear item selecionado")
+        self.rename_action.triggered.connect(self._rename_selected_item)
+        
+        self.delete_action = QAction("Excluir", self)
+        self.delete_action.setStatusTip("Excluir item selecionado")
+        self.delete_action.triggered.connect(self._delete_selected_item)
+        
+        # Ação para limpar histórico
+        self.clear_history_action = QAction("Limpar Histórico", self)
+        self.clear_history_action.setStatusTip("Limpar histórico de requisições")
+        self.clear_history_action.triggered.connect(self._clear_history)
     
     def _create_toolbar(self):
         """Cria a barra de ferramentas"""
@@ -249,7 +263,10 @@ class MainWindow(QMainWindow):
         
         # Menu Editar
         edit_menu = menu_bar.addMenu("Editar")
-        # Adicionar ações posteriormente
+        edit_menu.addAction(self.rename_action)
+        edit_menu.addAction(self.delete_action)
+        edit_menu.addSeparator()
+        edit_menu.addAction(self.clear_history_action)
         
         # Menu Visualizar
         view_menu = menu_bar.addMenu("Visualizar")
@@ -1128,4 +1145,62 @@ class MainWindow(QMainWindow):
             if success:
                 QMessageBox.information(self, "Exportação Concluída", message)
             else:
-                QMessageBox.warning(self, "Erro na Exportação", message) 
+                QMessageBox.warning(self, "Erro na Exportação", message)
+
+    def _rename_selected_item(self):
+        """Renomeia o item selecionado na árvore de coleções"""
+        index = self.collection_tree.currentIndex()
+        if not index.isValid():
+            QMessageBox.warning(self, "Renomear", "Selecione um item para renomear")
+            return
+        
+        item = self.collection_model.itemFromIndex(index)
+        if not hasattr(item, 'item_type'):
+            return
+        
+        if item.item_type == "collection":
+            self._rename_collection(item.data)
+        elif item.item_type == "folder":
+            self._rename_folder(item.data)
+        elif item.item_type == "request":
+            self._rename_request(item.data)
+    
+    def _delete_selected_item(self):
+        """Exclui o item selecionado na árvore de coleções"""
+        index = self.collection_tree.currentIndex()
+        if not index.isValid():
+            QMessageBox.warning(self, "Excluir", "Selecione um item para excluir")
+            return
+        
+        item = self.collection_model.itemFromIndex(index)
+        if not hasattr(item, 'item_type'):
+            return
+        
+        if item.item_type == "collection":
+            self._delete_collection(item.data)
+        elif item.item_type == "folder":
+            self._delete_folder(item.data)
+        elif item.item_type == "request":
+            self._delete_request(item.data)
+    
+    def _clear_history(self):
+        """Limpa o histórico de requisições"""
+        # Confirmar a ação com o usuário
+        reply = QMessageBox.question(
+            self,
+            "Limpar Histórico",
+            "Deseja realmente limpar todo o histórico de requisições?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        
+        if reply != QMessageBox.Yes:
+            return
+        
+        # Limpar o histórico
+        self.storage.clear_history()
+        
+        # Atualizar a árvore de coleções
+        self.collection_model.load_collections()
+        
+        # Exibir mensagem de sucesso
+        self.status_bar.showMessage("Histórico de requisições limpo com sucesso", 3000) 

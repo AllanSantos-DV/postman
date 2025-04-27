@@ -105,7 +105,26 @@ QMenu {
     color: #212121;
 }
 
+QMenu::item {
+    padding: 5px 20px;
+}
+
 QMenu::item:selected {
+    background-color: #bbdefb;
+    color: #212121;
+}
+
+QMenuBar {
+    background-color: #e0e0e0;
+    color: #212121;
+}
+
+QMenuBar::item {
+    padding: 5px 10px;
+    background-color: transparent;
+}
+
+QMenuBar::item:selected, QMenuBar::item:pressed {
     background-color: #bbdefb;
     color: #212121;
 }
@@ -220,7 +239,26 @@ QMenu {
     color: #f5f5f5;
 }
 
+QMenu::item {
+    padding: 5px 20px;
+}
+
 QMenu::item:selected {
+    background-color: #2c5e80;
+    color: #f5f5f5;
+}
+
+QMenuBar {
+    background-color: #1e1e1e;
+    color: #f5f5f5;
+}
+
+QMenuBar::item {
+    padding: 5px 10px;
+    background-color: transparent;
+}
+
+QMenuBar::item:selected, QMenuBar::item:pressed {
     background-color: #2c5e80;
     color: #f5f5f5;
 }
