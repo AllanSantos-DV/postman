@@ -7,14 +7,14 @@ from PyQt5.QtWidgets import (
     QMainWindow, QTabWidget, QSplitter, QTreeView, QVBoxLayout, 
     QHBoxLayout, QWidget, QAction, QToolBar, QStatusBar, QMessageBox,
     QMenu, QInputDialog, QLineEdit, QDialog, QDialogButtonBox, QComboBox,
-    QLabel, QActionGroup, QAbstractItemView
+    QLabel, QActionGroup, QAbstractItemView, QFileDialog, QRadioButton
 )
 from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtGui import QIcon
 
 from src.core.storage import Storage
 from src.ui.request_tab import RequestTab
-from src.ui.collection_tree_model import CollectionTreeModel
+from src.ui.collection_tree_model import CollectionTreeModel, CollectionTreeItem
 from src.ui.environment_dialog import EnvironmentDialog
 from src.models.collection import Collection, Folder
 from src.models.request import Request
@@ -164,10 +164,12 @@ class MainWindow(QMainWindow):
         # Ação para importar coleção
         self.import_action = QAction("Importar", self)
         self.import_action.setStatusTip("Importar coleção")
+        self.import_action.triggered.connect(self._import_collection)
         
         # Ação para exportar coleção
         self.export_action = QAction("Exportar", self)
         self.export_action.setStatusTip("Exportar coleção")
+        self.export_action.triggered.connect(self._export_collection)
         
         # Ação para sair
         self.exit_action = QAction("Sair", self)
@@ -1034,4 +1036,96 @@ class MainWindow(QMainWindow):
         """Salva as configurações no armazenamento"""
         settings = self.storage.get_settings()
         settings['theme'] = 'dark' if self.is_dark_theme else 'light'
-        self.storage.save_settings(settings) 
+        self.storage.save_settings(settings)
+
+    def _import_collection(self):
+        """Importa uma coleção de um arquivo Postman ou Insomnia"""
+        file_dialog = QFileDialog()
+        file_dialog.setWindowTitle("Importar Coleção")
+        file_dialog.setFileMode(QFileDialog.ExistingFile)
+        file_dialog.setNameFilter("Arquivos de Coleção (*.json)")
+        
+        if file_dialog.exec_():
+            file_path = file_dialog.selectedFiles()[0]
+            
+            # Importar a coleção usando o conversor
+            from src.utils.collection_converter import import_collection
+            success, message, collection = import_collection(file_path, self.storage)
+            
+            if success:
+                # Atualizar a árvore de coleções
+                self.collection_model.load_collections()
+                QMessageBox.information(self, "Importação Concluída", message)
+            else:
+                QMessageBox.warning(self, "Erro na Importação", message)
+
+    def _export_collection(self):
+        """Exporta uma coleção selecionada para um arquivo Postman ou Insomnia"""
+        # Obter o item selecionado
+        index = self.collection_tree.currentIndex()
+        if not index.isValid():
+            QMessageBox.warning(self, "Erro", "Selecione uma coleção para exportar")
+            return
+        
+        # Verificar se é uma coleção (não pasta ou requisição)
+        item = self.collection_model.itemFromIndex(index)
+        if not hasattr(item, 'item_type') or item.item_type != "collection":
+            QMessageBox.warning(self, "Erro", "Selecione uma coleção para exportar")
+            return
+        
+        # Obter a coleção
+        collection_id = item.data
+        collection = self.storage.get_collection(collection_id)
+        
+        if not collection:
+            QMessageBox.warning(self, "Erro", "Coleção não encontrada")
+            return
+        
+        # Escolher o formato de exportação
+        format_dialog = QDialog(self)
+        format_dialog.setWindowTitle("Formato de Exportação")
+        format_dialog.resize(300, 150)
+        
+        layout = QVBoxLayout()
+        
+        format_label = QLabel("Escolha o formato de exportação:")
+        layout.addWidget(format_label)
+        
+        postman_radio = QRadioButton("Postman")
+        postman_radio.setChecked(True)
+        layout.addWidget(postman_radio)
+        
+        insomnia_radio = QRadioButton("Insomnia")
+        layout.addWidget(insomnia_radio)
+        
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(format_dialog.accept)
+        button_box.rejected.connect(format_dialog.reject)
+        layout.addWidget(button_box)
+        
+        format_dialog.setLayout(layout)
+        
+        if format_dialog.exec_() != QDialog.Accepted:
+            return
+        
+        # Determinar o formato selecionado
+        export_format = "postman" if postman_radio.isChecked() else "insomnia"
+        
+        # Selecionar o arquivo de destino
+        file_dialog = QFileDialog()
+        file_dialog.setWindowTitle("Exportar Coleção")
+        file_dialog.setAcceptMode(QFileDialog.AcceptSave)
+        file_dialog.setDefaultSuffix("json")
+        file_dialog.setNameFilter("Arquivos JSON (*.json)")
+        
+        if file_dialog.exec_():
+            file_path = file_dialog.selectedFiles()[0]
+            
+            # Exportar a coleção usando o conversor
+            from src.utils.collection_converter import export_collection
+            success, message = export_collection(collection, file_path, export_format, self.storage)
+            
+            if success:
+                QMessageBox.information(self, "Exportação Concluída", message)
+            else:
+                QMessageBox.warning(self, "Erro na Exportação", message) 
