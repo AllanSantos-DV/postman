@@ -1,3 +1,58 @@
+# Arquivos e diretórios específicos do projeto
 /.cursor
-/build
+/build/
+/portable/
 *.spec
+PyRequestMan_Portable.zip
+
+# Arquivos de dados gerados pelo aplicativo
+/data/*
+!/data/settings.json
+
+# Ambientes virtuais
+/venv/
+/env/
+/.venv/
+/.env/
+
+# Cache do Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Distribuição / empacotamento
+/downloads/
+/eggs/
+/.eggs/
+/*.egg-info/
+/*.egg
+
+# Arquivos de teste unitário / cobertura
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+.nox/
+
+# Logs e arquivos temporários
+*.log
+.tmp/
+logs/
+*.tmp
+
+# Configurações de editor
+.idea/
+.vscode/
+*.swp
+*.swo
+.project
+.pydevproject
+.spyderproject
+.ropeproject
+
+# Arquivos do sistema operacional
+.DS_Store
+Thumbs.db
+desktop.ini

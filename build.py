@@ -17,6 +17,7 @@ SCRIPT_DIR = Path(__file__).parent.absolute()
 def clean_build_directories():
     """
     Limpa os diretórios de build e dist caso existam
+    (Usado antes de iniciar o build)
     """
     print("Limpando diretórios de build anteriores...")
     
@@ -46,7 +47,34 @@ def clean_build_directories():
         except Exception as e:
             print(f"Erro ao remover arquivo spec: {e}")
     
-    print("Limpeza concluída.")
+    print("Limpeza inicial concluída.")
+
+
+def clean_after_build():
+    """
+    Limpa apenas o diretório build mantendo o dist com o executável
+    (Usado após geração bem-sucedida do executável)
+    """
+    print("Limpando arquivos temporários pós-build...")
+    
+    # Limpar diretório build
+    build_dir = SCRIPT_DIR / "build"
+    if build_dir.exists():
+        print(f"Removendo diretório: {build_dir}")
+        try:
+            shutil.rmtree(build_dir)
+        except Exception as e:
+            print(f"Erro ao remover diretório build: {e}")
+    
+    # Limpar arquivos .spec
+    for spec_file in SCRIPT_DIR.glob("*.spec"):
+        print(f"Removendo arquivo spec: {spec_file}")
+        try:
+            spec_file.unlink()
+        except Exception as e:
+            print(f"Erro ao remover arquivo spec: {e}")
+    
+    print("Limpeza pós-build concluída.")
 
 
 def build_executable():
@@ -152,6 +180,10 @@ def build_executable():
         subprocess.check_call(cmd)
         print("Executável criado com sucesso!")
         print("O arquivo está disponível em: dist/PyRequestMan.exe")
+        
+        # Limpar o diretório build após sucesso
+        clean_after_build()
+        
         return True
     except subprocess.CalledProcessError as e:
         print(f"Erro ao criar executável: {e}")
@@ -211,6 +243,10 @@ exe = EXE(
             subprocess.check_call(cmd)
             print("Executável criado com sucesso usando método alternativo!")
             print("O arquivo está disponível em: dist/PyRequestMan.exe")
+            
+            # Limpar o diretório build após sucesso
+            clean_after_build()
+            
             return True
         except Exception as e2:
             print(f"Falha também no método alternativo: {e2}")
