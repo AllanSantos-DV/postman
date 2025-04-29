@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import (
     QPushButton, QLabel, QSplitter, QToolBar,
     QAction, QGroupBox, QTableWidget, QTableWidgetItem,
     QHeaderView, QMessageBox, QPlainTextEdit, QMenu,
-    QApplication, QStyledItemDelegate, QCompleter
+    QApplication, QStyledItemDelegate, QCompleter, QStackedWidget
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QSize, QStringListModel
 from PyQt5.QtGui import QColor, QSyntaxHighlighter, QTextCharFormat, QFont
@@ -19,6 +19,7 @@ from src.core.http_client import HttpClient
 from src.core.storage import Storage
 from src.ui.variable_completer import VariableCompleter
 from src.utils.curl_converter import request_to_curl, curl_to_request
+import uuid
 
 
 # Lista de cabeçalhos HTTP comuns
@@ -287,16 +288,19 @@ class RequestTab(QWidget):
         # Botão para enviar a requisição
         self.send_button = QPushButton("Enviar")
         self.send_button.clicked.connect(self._on_send_clicked)
+        self.send_button.setToolTip("Enviar a requisição para o servidor")
         toolbar.addWidget(self.send_button)
         
         # Botão para salvar a requisição
         self.save_button = QPushButton("Salvar")
         self.save_button.clicked.connect(self.save_request)
+        self.save_button.setToolTip("Salvar esta requisição em uma coleção")
         toolbar.addWidget(self.save_button)
         
         # Botão para salvar na coleção
         self.save_to_collection_button = QPushButton("Salvar na Coleção")
         self.save_to_collection_button.clicked.connect(self._on_save_to_collection)
+        self.save_to_collection_button.setToolTip("Salvar esta requisição em uma coleção")
         toolbar.addWidget(self.save_to_collection_button)
         
         main_layout.addWidget(toolbar)
@@ -313,10 +317,12 @@ class RequestTab(QWidget):
         
         self.method_combo = QComboBox()
         self.method_combo.addItems(["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+        self.method_combo.setToolTip("Método HTTP a ser utilizado na requisição")
         self.method_combo.currentTextChanged.connect(self._on_field_changed)
         
         self.url_edit = QLineEdit()
         self.url_edit.setPlaceholderText("https://api.example.com/endpoint")
+        self.url_edit.setToolTip("URL completa do endpoint (ex: https://api.exemplo.com/recurso)")
         self.url_edit.textChanged.connect(self._on_field_changed)
         
         url_layout.addWidget(self.method_combo)
@@ -330,6 +336,7 @@ class RequestTab(QWidget):
         
         self.name_edit = QLineEdit()
         self.name_edit.setPlaceholderText("Nome da requisição")
+        self.name_edit.setToolTip("Nome da requisição")
         self.name_edit.textChanged.connect(self._on_field_changed)
         
         name_layout.addWidget(self.name_edit, 1)
@@ -348,6 +355,7 @@ class RequestTab(QWidget):
         self.params_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.params_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
         self.params_table.horizontalHeader().setDefaultSectionSize(30)
+        self.params_table.setToolTip("Parâmetros da URL (ex: ?chave=valor&outra=123)")
         self.params_table.itemChanged.connect(self._on_table_changed)
         
         # Delegate para autocompletar variáveis em parâmetros
@@ -374,6 +382,7 @@ class RequestTab(QWidget):
         self.headers_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.headers_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
         self.headers_table.horizontalHeader().setDefaultSectionSize(30)
+        self.headers_table.setToolTip("Cabeçalhos HTTP da requisição (ex: Content-Type, Authorization)")
         self.headers_table.itemChanged.connect(self._on_table_changed)
         
         # Delegate para autocompletar cabeçalhos
@@ -410,6 +419,7 @@ class RequestTab(QWidget):
         
         self.body_type_combo = QComboBox()
         self.body_type_combo.addItems(["none", "raw", "form-data", "x-www-form-urlencoded"])
+        self.body_type_combo.setToolTip("Tipo de dados do corpo da requisição")
         self.body_type_combo.currentTextChanged.connect(self._on_body_type_changed)
         
         body_type_layout.addWidget(self.body_type_combo)
@@ -418,6 +428,7 @@ class RequestTab(QWidget):
         self.content_type_combo = QComboBox()
         self.content_type_combo.addItems(["application/json", "text/plain", "application/xml", "text/html"])
         self.content_type_combo.setVisible(False)
+        self.content_type_combo.setToolTip("Tipo de conteúdo do corpo da requisição")
         self.content_type_combo.currentTextChanged.connect(self._on_content_type_changed)
         
         body_type_layout.addWidget(QLabel("Content-Type:"))
@@ -435,6 +446,7 @@ class RequestTab(QWidget):
         self.format_json_button = QPushButton("Formatar JSON")
         self.format_json_button.clicked.connect(self._format_json)
         self.format_json_button.setVisible(False)
+        self.format_json_button.setToolTip("Formatar o JSON no editor de corpo")
         editor_toolbar.addWidget(self.format_json_button)
         
         editor_toolbar.addStretch()
@@ -443,6 +455,7 @@ class RequestTab(QWidget):
         # Editor de texto
         self.body_editor = QPlainTextEdit()
         self.body_editor.setPlaceholderText("Corpo da requisição")
+        self.body_editor.setToolTip("Conteúdo do corpo da requisição")
         self.body_editor.textChanged.connect(self._on_field_changed)
         
         # Realce de sintaxe para JSON
@@ -459,6 +472,7 @@ class RequestTab(QWidget):
         self.body_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
         self.body_table.horizontalHeader().setDefaultSectionSize(30)
         self.body_table.setVisible(False)
+        self.body_table.setToolTip("Dados de formulário multipart/form-data (suporta arquivos)")
         self.body_table.itemChanged.connect(self._on_table_changed)
         
         body_layout.addWidget(self.body_table)
@@ -485,6 +499,7 @@ class RequestTab(QWidget):
         # Botão para copiar o cURL
         self.copy_curl_preview_button = QPushButton("Copiar cURL")
         self.copy_curl_preview_button.clicked.connect(self._copy_curl_from_preview)
+        self.copy_curl_preview_button.setToolTip("Copiar esta requisição como um comando cURL para uso em terminal")
         curl_toolbar.addWidget(self.copy_curl_preview_button)
         
         # Botão para atualizar o cURL
@@ -495,6 +510,7 @@ class RequestTab(QWidget):
         # Botão para importar o cURL
         self.import_curl_button = QPushButton("Importar cURL")
         self.import_curl_button.clicked.connect(self._import_curl)
+        self.import_curl_button.setToolTip("Importar um comando cURL para esta requisição")
         curl_toolbar.addWidget(self.import_curl_button)
         
         curl_toolbar.addStretch()
@@ -503,6 +519,7 @@ class RequestTab(QWidget):
         # Editor de texto para cURL
         self.curl_editor = QPlainTextEdit()
         self.curl_editor.setPlaceholderText("Comando cURL")
+        self.curl_editor.setToolTip("Visualização da requisição como comando cURL")
         curl_editor_layout.addWidget(self.curl_editor)
         
         curl_layout.addLayout(curl_editor_layout)

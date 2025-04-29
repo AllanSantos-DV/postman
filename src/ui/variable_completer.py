@@ -42,6 +42,9 @@ class VariableCompleter(QObject):
         
         # Estado do autocompletar
         self.completion_active = False
+        
+        # Tooltip para informar sobre o uso de variáveis
+        self.variable_tooltip = "Digite {{ para acessar o autopreenchimento de variáveis"
     
     def set_variables(self, variables):
         """
@@ -131,6 +134,7 @@ class VariableCompleter(QObject):
             widget (QLineEdit): O widget a ser conectado
         """
         widget.textEdited.connect(lambda text: self._handle_text_edited(widget, text))
+        widget.setToolTip(self.variable_tooltip)
     
     def connect_to_textedit(self, widget):
         """
@@ -143,6 +147,8 @@ class VariableCompleter(QObject):
             widget.textChanged.connect(lambda: self._handle_textedit_changed(widget))
         else:
             widget.textChanged.connect(lambda: self._handle_textedit_changed(widget))
+        
+        widget.setToolTip(self.variable_tooltip)
     
     def _handle_text_edited(self, widget, text):
         """

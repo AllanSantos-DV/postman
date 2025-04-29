@@ -347,25 +347,38 @@ class MainWindow(QMainWindow):
         
         # Adicionar ações à barra de ferramentas
         self.toolbar.addAction(self.new_request_action)
+        self.new_request_action.setToolTip("Criar uma nova requisição")
+        
         self.toolbar.addAction(self.new_collection_action)
+        self.new_collection_action.setToolTip("Criar uma nova coleção de requisições")
+        
         self.toolbar.addSeparator()
         self.toolbar.addAction(self.save_to_collection_action)
+        self.save_to_collection_action.setToolTip("Salvar a requisição atual em uma coleção")
+        
         self.toolbar.addSeparator()
         self.toolbar.addAction(self.import_action)
+        self.import_action.setToolTip("Importar uma coleção de requisições")
+        
         self.toolbar.addAction(self.export_action)
+        self.export_action.setToolTip("Exportar uma coleção de requisições")
         
         # Adicionar seletor de ambiente
         self.toolbar.addSeparator()
-        self.toolbar.addWidget(QLabel("Ambiente: "))
+        env_label = QLabel("Ambiente: ")
+        env_label.setToolTip("Selecione o ambiente de variáveis a ser utilizado")
+        self.toolbar.addWidget(env_label)
         
         self.environment_combo = QComboBox()
         self.environment_combo.setMinimumWidth(150)
         self.environment_combo.addItem("Nenhum", None)
         self.environment_combo.currentIndexChanged.connect(self._on_environment_changed)
+        self.environment_combo.setToolTip("Selecione o ambiente de variáveis para substituição nas requisições")
         self.toolbar.addWidget(self.environment_combo)
         
         # Botão para gerenciar ambientes
         self.toolbar.addAction(self.manage_environments_action)
+        self.manage_environments_action.setToolTip("Gerenciar ambientes e suas variáveis")
     
     def _create_menu(self):
         """Cria o menu principal"""
